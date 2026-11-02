@@ -16,13 +16,15 @@ participantes web e desktop na mesma sala.
   recebidas aparecem em grade e somem 3 s depois que o participante para de compartilhar
 - Mantém o PC acordado durante a chamada (equivalente ao Wake Lock)
 
-> Participantes web com o `client.js` atual só negociam áudio — eles falam e ouvem normalmente,
-> mas não recebem a tela. Entre clientes desktop a tela funciona sem renegociação, pois a trilha
-> de vídeo é criada junto com a conexão.
+> Participantes web só negociam áudio — eles falam e ouvem normalmente, mas não recebem a tela.
+> A resposta SDP do cliente desktop espelha exatamente as m-lines da oferta (o navegador rejeita
+> m-lines extras), e renegociações do web (ex.: "Compartilhar Áudio do PC") reaproveitam a conexão,
+> com um decodificador por trilha de áudio. Entre clientes desktop a tela funciona sem renegociação,
+> pois a trilha de vídeo é criada junto com a conexão.
 
 ## Executar
 
-Servidor de sinalização (use o seu ou o mínimo incluso em `server/`):
+O servidor padrão é `https://voz.tempsharing.com.br`. Para testar localmente, use o servidor mínimo incluso em `server/`:
 
 ```bash
 cd server && npm install && npm start
@@ -31,10 +33,10 @@ cd server && npm install && npm start
 Cliente:
 
 ```bash
-dotnet run --project src/P2PCall.Client -- --sala minhaSala --server http://localhost:3000
+dotnet run --project src/P2PCall.Client -- --sala minhaSala
 ```
 
-`--sala` e `--server` são opcionais (equivalentes ao `?sala=` da versão web).
+`--sala` e `--server <url>` são opcionais (equivalentes ao `?sala=` da versão web).
 
 ## Estrutura
 

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using P2PCall.Client.Audio;
 using P2PCall.Client.Video;
 using SIPSorcery.Net;
@@ -15,7 +16,6 @@ namespace P2PCall.Client.Call;
 /// </summary>
 public sealed class CallManager : IAsyncDisposable
 {
-    private const string OpusFmtp = "minptime=10;useinbandfec=1;stereo=1;sprop-stereo=1";
 
     private static readonly RTCConfiguration RtcConfig = new()
     {
@@ -107,7 +107,7 @@ public sealed class CallManager : IAsyncDisposable
         await _signalingLock.WaitAsync();
         try
         {
-            var peer = CreatePeer(userId);
+            var peer = CreatePeer(userId, audioLines: 1, withVideo: true);
             var offer = peer.Pc.createOffer(null);
             await peer.Pc.setLocalDescription(offer);
             await EmitAsync("offer", new { to = userId, offer = new { type = "offer", sdp = offer.sdp } });
@@ -127,19 +127,47 @@ public sealed class CallManager : IAsyncDisposable
             var from = data.GetProperty("from").GetString()!;
             var sdp = data.GetProperty("offer").GetProperty("sdp").GetString()!;
 
-            var peer = CreatePeer(from);
-            var result = peer.Pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp });
-            if (result != SetDescriptionResultEnum.OK)
+            // A resposta precisa ter exatamente as mesmas m-lines da oferta, na mesma ordem:
+            // o cliente web oferece só áudio (às vezes duas trilhas, com o áudio do PC).
+            int audioLines = Regex.Matches(sdp, "^m=audio ", RegexOptions.Multiline).Count;
+            bool withVideo = Regex.IsMatch(sdp, "^m=video ", RegexOptions.Multiline);
+
+            // Renegociação (ex.: o participante web começou a compartilhar o áudio do PC):
+            // reaproveita a conexão existente, como o client.js faz.
+            bool renegotiation = false;
+            if (_peers.TryGetValue(from, out var peer) && peer.Pc.remoteDescription is not null)
             {
-                StatusChanged?.Invoke($"Oferta incompatível ({result}).");
-                RemovePeer(from);
-                return;
+                peer.EnsureAudioStreams(audioLines);
+                renegotiation = peer.Pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp }) == SetDescriptionResultEnum.OK;
+                if (!renegotiation) peer = null;
+            }
+            else
+            {
+                peer = null;
+            }
+
+            if (peer is null)
+            {
+                peer = CreatePeer(from, audioLines, withVideo);
+                var result = peer.Pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.offer, sdp = sdp });
+                if (result != SetDescriptionResultEnum.OK)
+                {
+                    StatusChanged?.Invoke($"Oferta incompatível ({result}).");
+                    RemovePeer(from);
+                    return;
+                }
             }
             peer.FlushPendingCandidates();
 
             var answer = peer.Pc.createAnswer(null);
             await peer.Pc.setLocalDescription(answer);
-            await EmitAsync("answer", new { to = from, answer = new { type = "answer", sdp = answer.sdp } });
+            var answerSdp = SdpDirections.MatchOffer(sdp, answer.sdp);
+            // O papel DTLS não pode mudar numa renegociação: repete o da primeira negociação.
+            if (renegotiation && peer.DtlsSetup is not null)
+                answerSdp = SdpDirections.SetDtlsSetup(answerSdp, peer.DtlsSetup);
+            else
+                peer.DtlsSetup = SdpDirections.GetDtlsSetup(answerSdp);
+            await EmitAsync("answer", new { to = from, answer = new { type = "answer", sdp = answerSdp } });
         }
         catch (Exception ex)
         {
@@ -160,6 +188,8 @@ public sealed class CallManager : IAsyncDisposable
             var result = peer.Pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = sdp });
             if (result != SetDescriptionResultEnum.OK)
                 StatusChanged?.Invoke($"Resposta incompatível ({result}).");
+            // Nós oferecemos: nosso papel DTLS é o oposto do que o outro lado escolheu.
+            peer.DtlsSetup ??= SdpDirections.GetDtlsSetup(sdp) == "active" ? "passive" : "active";
             peer.FlushPendingCandidates();
         }
         finally { _signalingLock.Release(); }
@@ -214,22 +244,24 @@ public sealed class CallManager : IAsyncDisposable
 
     // ---------- Conexões P2P ----------
 
-    private PeerSession CreatePeer(string peerId)
+    private PeerSession CreatePeer(string peerId, int audioLines, bool withVideo)
     {
         if (_peers.TryRemove(peerId, out var existing)) existing.Dispose();
         _earlyCandidates.Remove(peerId, out var early);
 
         var pc = new RTCPeerConnection(RtcConfig);
 
-        var audioFormat = new AudioFormat(AudioCodecsEnum.OPUS, 111, AudioEngine.SampleRate, 2, OpusFmtp);
-        pc.addTrack(new MediaStreamTrack(audioFormat, MediaStreamStatusEnum.SendRecv));
+        var peer = new PeerSession(peerId, pc, _audio);
+        peer.EnsureAudioStreams(Math.Max(1, audioLines));
 
-        // A trilha de vídeo existe sempre (envia só quando a tela está sendo compartilhada),
-        // assim não é preciso renegociar ao ligar/desligar o compartilhamento.
-        var videoFormat = new VideoFormat(VideoCodecsEnum.VP8, VpxVideoEncoder.VP8_FORMATID, 90000, null);
-        pc.addTrack(new MediaStreamTrack(videoFormat, MediaStreamStatusEnum.SendRecv));
+        // Entre clientes desktop a trilha de vídeo existe desde o início (só envia quando a tela
+        // está sendo compartilhada), assim não é preciso renegociar ao ligar/desligar.
+        if (withVideo)
+        {
+            var videoFormat = new VideoFormat(VideoCodecsEnum.VP8, VpxVideoEncoder.VP8_FORMATID, 90000, null);
+            pc.addTrack(new MediaStreamTrack(videoFormat, MediaStreamStatusEnum.SendRecv));
+        }
 
-        var peer = new PeerSession(peerId, pc, _audio.CreateRemoteSink());
         if (early is not null) foreach (var c in early) peer.AddRemoteCandidate(c);
         _peers[peerId] = peer;
 
@@ -259,9 +291,10 @@ public sealed class CallManager : IAsyncDisposable
             }
         };
 
-        pc.OnRtpPacketReceived += (_, media, packet) =>
+        // Cada trilha de áudio remota (microfone, áudio do PC...) tem seu próprio decodificador.
+        pc.OnRtpPacketReceivedByIndex += (index, _, media, packet) =>
         {
-            if (media == SDPMediaTypesEnum.audio) peer.Audio.PushOpus(packet.Payload);
+            if (media == SDPMediaTypesEnum.audio) peer.GetAudioSink(index).PushOpus(packet.Payload);
         };
 
         pc.OnVideoFrameReceived += (_, _, frame, format) =>

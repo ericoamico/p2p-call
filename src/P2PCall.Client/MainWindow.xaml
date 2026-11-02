@@ -48,7 +48,7 @@
                 <TextBlock Text="Chamada P2P" FontSize="22" FontWeight="SemiBold" />
 
                 <TextBlock Style="{StaticResource Label}" Text="Servidor de sinalização" />
-                <TextBox x:Name="ServerInput" Text="http://localhost:3000" />
+                <TextBox x:Name="ServerInput" Text="https://voz.tempsharing.com.br" />
 
                 <TextBlock Style="{StaticResource Label}" Text="Sala" />
                 <TextBox x:Name="RoomInput" KeyDown="RoomInput_KeyDown" />
