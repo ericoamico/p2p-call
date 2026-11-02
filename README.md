@@ -11,9 +11,14 @@ participantes web e desktop na mesma sala.
 - Captura e reprodução com [NAudio](https://github.com/naudio/NAudio), sem eco/ruído/AGC (áudio cru, como no web)
 - Seleção de microfone (troca durante a chamada) e qualidade de envio (32–510 kbps)
 - Silenciar microfone
-- Gravação da chamada (microfone + participantes) em WAV, salva em `Músicas\P2PCall`
+- Gravação da chamada (microfone + áudio do PC compartilhado + participantes) em WAV, salva em `Músicas\P2PCall`
 - **Compartilhar tela**: tela principal em VP8 (até 1600 px, 12 fps, com cursor); as telas
   recebidas aparecem em grade e somem 3 s depois que o participante para de compartilhar
+- **Áudio do PC** junto com a tela: capturado com o loopback por processo do Windows *excluindo*
+  o próprio aplicativo, então as vozes da chamada que tocam no seu PC não voltam para quem está
+  vendo (ninguém se ouve duas vezes). É somado à trilha do microfone — chega a todos, inclusive
+  participantes web, sem renegociação — e continua indo com o microfone silenciado.
+  Requer Windows 10 versão 2004 ou mais recente; em versões antigas a tela vai sem áudio
 - Mantém o PC acordado durante a chamada (equivalente ao Wake Lock)
 
 > Participantes web só negociam áudio — eles falam e ouvem normalmente, mas não recebem a tela.

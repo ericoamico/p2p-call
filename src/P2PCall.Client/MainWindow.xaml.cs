@@ -192,7 +192,7 @@ public partial class MainWindow : Window
     private void QualitySelect_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         _audio?.SetBitrate(SelectedBitrate);
 
-    private void BtnShare_Toggled(object sender, RoutedEventArgs e)
+    private async void BtnShare_Toggled(object sender, RoutedEventArgs e)
     {
         if (_syncingToggles || _call is null) return;
         bool wantShare = BtnShare.IsChecked == true;
@@ -205,8 +205,13 @@ public partial class MainWindow : Window
         }
         else
         {
-            _call.StartScreenShare();
-            SetStatus("Compartilhando sua tela principal.");
+            var call = _call;
+            bool withAudio = await call.StartScreenShareAsync();
+            // Pode ter parado (ou saído da sala) enquanto o áudio do PC era ativado.
+            if (_call != call || !call.IsSharingScreen) return;
+            SetStatus(withAudio
+                ? "Compartilhando sua tela principal e o áudio do PC."
+                : "Compartilhando sua tela principal, sem o áudio do PC (requer Windows 10 versão 2004 ou mais recente).");
         }
         SetToggle(BtnShare, _call.IsSharingScreen);
     }

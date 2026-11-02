@@ -12,7 +12,8 @@ namespace P2PCall.Client.Call;
 
 /// <summary>
 /// Sinalização via Socket.IO (mesmo protocolo do client.js) e uma conexão WebRTC P2P
-/// por participante. Áudio em Opus; tela compartilhada em VP8 na trilha de vídeo.
+/// por participante. Áudio em Opus; tela compartilhada em VP8 na trilha de vídeo, com o áudio
+/// do PC somado ao microfone.
 /// </summary>
 public sealed class CallManager : IAsyncDisposable
 {
@@ -92,13 +93,23 @@ public sealed class CallManager : IAsyncDisposable
         }
     }
 
-    public void StartScreenShare()
+    /// <summary>
+    /// Compartilha a tela e o áudio do PC. O áudio vai somado à trilha do microfone, que todos
+    /// os participantes (web e desktop) já recebem, então não há renegociação.
+    /// Retorna false se a tela foi compartilhada sem o áudio do PC.
+    /// </summary>
+    public async Task<bool> StartScreenShareAsync()
     {
         _screen.Start();
         _screen.RequestKeyFrame();
+        return await _audio.StartSystemAudioAsync();
     }
 
-    public void StopScreenShare() => _screen.Stop();
+    public void StopScreenShare()
+    {
+        _screen.Stop();
+        _audio.StopSystemAudio();
+    }
 
     // ---------- Sinalização ----------
 

@@ -9,7 +9,8 @@ namespace P2PCall.Client.Audio;
 
 /// <summary>
 /// "Mesa de som" da chamada: captura o microfone (NAudio), codifica em Opus,
-/// mistura as vozes remotas para reprodução e grava a chamada (mic + remotos) em WAV.
+/// soma o áudio do PC durante o compartilhamento de tela, mistura as vozes remotas para
+/// reprodução e grava a chamada (mic + áudio do PC + remotos) em WAV.
 /// </summary>
 public sealed class AudioEngine : IDisposable
 {
@@ -31,12 +32,15 @@ public sealed class AudioEngine : IDisposable
 
     private WaveIn? _capture;
     private WaveOut? _output;
+    private SystemAudioCapture? _systemAudio;
+    private bool _systemAudioWanted;
 
     /// <summary>Disparado a cada 20 ms com um pacote Opus pronto para envio.</summary>
     public event Action<byte[]>? EncodedFrameReady;
 
     public bool IsMuted { get; set; }
     public bool IsRecording => _tap.IsRecording;
+    public bool IsSharingSystemAudio => _systemAudio is not null;
 
     public AudioEngine(int bitrateBps)
     {
@@ -93,6 +97,43 @@ public sealed class AudioEngine : IDisposable
         _accumulated = 0;
     }
 
+    /// <summary>
+    /// Começa a enviar o áudio do PC (tudo menos este aplicativo) junto com o microfone.
+    /// Retorna false se o Windows não suporta o loopback por processo.
+    /// </summary>
+    public async Task<bool> StartSystemAudioAsync()
+    {
+        if (_systemAudio is not null) return true;
+        _systemAudioWanted = true;
+
+        SystemAudioCapture capture;
+        try
+        {
+            capture = await SystemAudioCapture.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            // Nunca cai para o loopback do sistema inteiro: ele recapturaria as vozes remotas.
+            System.Diagnostics.Debug.WriteLine($"Áudio do PC indisponível: {ex.Message}");
+            return false;
+        }
+
+        // O compartilhamento pode ter sido encerrado enquanto a captura era ativada.
+        if (!_systemAudioWanted || _systemAudio is not null)
+        {
+            capture.Dispose();
+            return _systemAudioWanted;
+        }
+        _systemAudio = capture;
+        return true;
+    }
+
+    public void StopSystemAudio()
+    {
+        _systemAudioWanted = false;
+        Interlocked.Exchange(ref _systemAudio, null)?.Dispose();
+    }
+
     public void StartPlayback()
     {
         if (_output is not null) return;
@@ -139,6 +180,8 @@ public sealed class AudioEngine : IDisposable
 
             var frame = _captureAccumulator.AsSpan(0, frameBytes);
             if (IsMuted) frame.Clear();
+            // Silenciar corta só o microfone: o áudio do PC compartilhado continua indo.
+            _systemAudio?.MixInto(frame);
 
             _tap.AddMicSamples(frame);
 
@@ -156,6 +199,7 @@ public sealed class AudioEngine : IDisposable
     public void Dispose()
     {
         StopRecording();
+        StopSystemAudio();
         StopCapture();
         StopPlayback();
         _mixer.RemoveAllMixerInputs();

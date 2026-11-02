@@ -129,7 +129,7 @@
                               AutomationProperties.HelpText="Quando pressionado, seu microfone está silenciado. Atalhos: Ctrl+M ou Alt+M." />
                 <a11y:AccessibleToggleButton x:Name="BtnShare" Content="Compartilhar _Tela" IsEnabled="False" Checked="BtnShare_Toggled" Unchecked="BtnShare_Toggled"
                               AutomationProperties.Name="Compartilhar tela"
-                              AutomationProperties.HelpText="Quando pressionado, sua tela principal está sendo enviada. Atalho: Alt+T." />
+                              AutomationProperties.HelpText="Quando pressionado, sua tela principal e o áudio do PC estão sendo enviados. Atalho: Alt+T." />
                 <a11y:AccessibleToggleButton x:Name="BtnRecord" Content="_Gravar Chamada" IsEnabled="False" Checked="BtnRecord_Toggled" Unchecked="BtnRecord_Toggled"
                               AutomationProperties.Name="Gravar chamada"
                               AutomationProperties.HelpText="Quando pressionado, a chamada está sendo gravada. Solte para salvar o arquivo. Atalho: Alt+G." />
