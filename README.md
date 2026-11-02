@@ -22,6 +22,22 @@ participantes web e desktop na mesma sala.
 > com um decodificador por trilha de áudio. Entre clientes desktop a tela funciona sem renegociação,
 > pois a trilha de vídeo é criada junto com a conexão.
 
+## Acessibilidade
+
+Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
+
+- Todo campo tem rótulo associado, nome acessível e dica (`HelpText`); "Sala" é marcado como obrigatório
+- Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+C** microfone, **Alt+Q** qualidade,
+  **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+R** sair
+- **Ctrl+M** silencia/ativa o microfone de qualquer lugar da janela
+- Silenciar, compartilhar tela e gravar são botões de alternância: o leitor anuncia
+  "pressionado"/"não pressionado" (como o `aria-pressed` do web) e funcionam pelo padrão Toggle da automação
+- Status e número de participantes são regiões "ao vivo": mudanças são anunciadas sem mover o foco
+  (inclui mute, início/fim de compartilhamento de tela de outros participantes, gravação salva)
+- O foco nunca se perde: vai para o campo com erro, para "Silenciar microfone" ao entrar e para
+  "Entrar na sala" ao sair
+- Anel de foco bem visível e contraste de texto acima de 4,5:1
+
 ## Executar
 
 O servidor padrão é `https://voz.tempsharing.com.br`. Para testar localmente, use o servidor mínimo incluso em `server/`:
@@ -44,5 +60,6 @@ dotnet run --project src/P2PCall.Client -- --sala minhaSala
 | --- | --- |
 | `src/P2PCall.Client/Audio` | `AudioEngine`: microfone → Opus, mixagem das vozes remotas, gravação |
 | `src/P2PCall.Client/Call` | `CallManager` (sinalização + RTCPeerConnection por participante), `PeerSession` |
+| `src/P2PCall.Client/Controls` | Controles que evitam leitura duplicada do texto com tecla de acesso |
 | `src/P2PCall.Client/Video` | `ScreenSharer` (captura GDI → VP8), `RemoteScreen` (exibição) |
 | `server/` | Servidor Socket.IO mínimo para testes |

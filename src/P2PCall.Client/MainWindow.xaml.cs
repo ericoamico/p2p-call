@@ -2,7 +2,9 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Threading;
 using P2PCall.Client.Audio;
@@ -21,6 +23,7 @@ public partial class MainWindow : Window
     private AudioEngine? _audio;
     private CallManager? _call;
     private bool _isMuted;
+    private bool _syncingToggles;
 
     public MainWindow()
     {
@@ -72,19 +75,23 @@ public partial class MainWindow : Window
     private async Task JoinCallAsync()
     {
         var room = RoomInput.Text.Trim();
+        // Em caso de erro, o foco vai para o campo com problema e o erro é anunciado.
         if (room.Length == 0)
         {
             SetStatus("Por favor, digite um nome para a sala!");
+            RoomInput.Focus();
             return;
         }
         if (MicSelect.SelectedItem is not MicItem mic)
         {
             SetStatus("Selecione um microfone.");
+            MicSelect.Focus();
             return;
         }
         if (!Uri.TryCreate(ServerInput.Text.Trim(), UriKind.Absolute, out var server))
         {
             SetStatus("Endereço do servidor inválido.");
+            ServerInput.Focus();
             return;
         }
 
@@ -99,7 +106,7 @@ public partial class MainWindow : Window
 
             _call = new CallManager(_audio);
             _call.StatusChanged += msg => Dispatcher.BeginInvoke(() => SetStatus(msg));
-            _call.ParticipantsChanged += n => Dispatcher.BeginInvoke(() => ParticipantsText.Text = $"Participantes conectados: {n}");
+            _call.ParticipantsChanged += n => Dispatcher.BeginInvoke(() => SetParticipants(n));
             _call.RemoteScreenFrame += OnRemoteScreenFrame;
             _call.PeerLeft += id => Dispatcher.BeginInvoke(() => RemoveScreen(id));
 
@@ -108,6 +115,8 @@ public partial class MainWindow : Window
             KeepAwake(true);
             _screenWatchdog.Start();
             SetInCallUi(joining: false, inCall: true);
+            // "Entrar" fica desabilitado: leva o foco para o próximo controle útil.
+            BtnMute.Focus();
         }
         catch (Exception ex)
         {
@@ -120,6 +129,7 @@ public partial class MainWindow : Window
     {
         await LeaveCallAsync();
         SetStatus("Você saiu da sala.");
+        BtnStart.Focus();
     }
 
     private async Task LeaveCallAsync()
@@ -137,15 +147,33 @@ public partial class MainWindow : Window
 
         _screens.Clear();
         KeepAwake(false);
-        ParticipantsText.Text = "Participantes conectados: 0";
+        SetParticipants(0);
         SetInCallUi(joining: false, inCall: false);
     }
 
-    private void BtnMute_Click(object sender, RoutedEventArgs e)
+    // Os botões de alternância reagem a Checked/Unchecked (e não a Click) porque leitores de tela
+    // os acionam pelo padrão Toggle da automação, que muda o estado sem disparar Click.
+    private void BtnMute_Toggled(object sender, RoutedEventArgs e)
     {
-        _isMuted = !_isMuted;
-        if (_audio is not null) _audio.IsMuted = _isMuted;
-        BtnMute.Content = _isMuted ? "Ativar Microfone" : "Silenciar Microfone";
+        if (!_syncingToggles) SetMuted(BtnMute.IsChecked == true);
+    }
+
+    private void SetMuted(bool muted)
+    {
+        _isMuted = muted;
+        SetToggle(BtnMute, muted);
+        if (_audio is not null) _audio.IsMuted = muted;
+        SetStatus(muted ? "Microfone silenciado." : "Microfone ativado.");
+    }
+
+    private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        // Ctrl+M silencia/ativa o microfone de qualquer lugar da janela.
+        if (e.Key == Key.M && Keyboard.Modifiers == ModifierKeys.Control && BtnMute.IsEnabled)
+        {
+            SetMuted(!_isMuted);
+            e.Handled = true;
+        }
     }
 
     private void MicSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -164,36 +192,38 @@ public partial class MainWindow : Window
     private void QualitySelect_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         _audio?.SetBitrate(SelectedBitrate);
 
-    private void BtnShare_Click(object sender, RoutedEventArgs e)
+    private void BtnShare_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_call is null) return;
-        if (_call.IsSharingScreen)
+        if (_syncingToggles || _call is null) return;
+        bool wantShare = BtnShare.IsChecked == true;
+        if (wantShare == _call.IsSharingScreen) return;
+
+        if (!wantShare)
         {
             _call.StopScreenShare();
-            BtnShare.Content = "Compartilhar Tela";
-            SetStatus($"Conectado à sala: {_call.Room}.");
+            SetStatus("Compartilhamento de tela encerrado.");
         }
         else
         {
             _call.StartScreenShare();
-            BtnShare.Content = "Parar Compartilhamento";
-            SetStatus("Compartilhando sua tela principal...");
+            SetStatus("Compartilhando sua tela principal.");
         }
+        SetToggle(BtnShare, _call.IsSharingScreen);
     }
 
-    private void BtnRecord_Click(object sender, RoutedEventArgs e)
+    private void BtnRecord_Toggled(object sender, RoutedEventArgs e)
     {
-        if (_audio is null || _call is null) return;
+        if (_syncingToggles || _audio is null || _call is null) return;
+        bool wantRecord = BtnRecord.IsChecked == true;
+        if (wantRecord == _audio.IsRecording) return;
 
-        if (!_audio.IsRecording)
+        if (wantRecord)
         {
             var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "P2PCall");
             var safeRoom = string.Concat(_call.Room.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c));
             var path = Path.Combine(folder, $"Gravacao_{safeRoom}_{DateTimeOffset.Now.ToUnixTimeMilliseconds()}.wav");
             _audio.StartRecording(path);
-            BtnRecord.Content = "Parar e Salvar Gravação";
-            BtnRecord.Background = System.Windows.Media.Brushes.DarkRed;
-            SetStatus("Gravando chamada...");
+            SetStatus("Gravando chamada.");
         }
         else
         {
@@ -204,8 +234,7 @@ public partial class MainWindow : Window
     private void FinishRecording()
     {
         var path = _audio?.StopRecording();
-        BtnRecord.Content = "Gravar Chamada";
-        BtnRecord.ClearValue(BackgroundProperty);
+        SetToggle(BtnRecord, false);
         if (path is not null) SetStatus($"Gravação salva em: {path}");
     }
 
@@ -230,6 +259,7 @@ public partial class MainWindow : Window
             {
                 screen = new RemoteScreen(peerId);
                 _screens.Add(screen);
+                SetStatus($"{screen.Label} começou a ser compartilhada.");
             }
             screen.Update(width, height, copy);
         });
@@ -238,7 +268,10 @@ public partial class MainWindow : Window
     private void RemoveStaleScreens()
     {
         foreach (var s in _screens.Where(s => DateTime.UtcNow - s.LastFrameUtc > ScreenTimeout).ToList())
+        {
             _screens.Remove(s);
+            SetStatus($"{s.Label} deixou de ser compartilhada.");
+        }
     }
 
     private void RemoveScreen(string peerId)
@@ -258,10 +291,42 @@ public partial class MainWindow : Window
         BtnShare.IsEnabled = inCall;
         BtnRecord.IsEnabled = inCall;
         BtnLeave.IsEnabled = inCall;
-        if (!inCall) BtnShare.Content = "Compartilhar Tela";
+        SetToggle(BtnMute, _isMuted);
+        if (!inCall)
+        {
+            SetToggle(BtnShare, false);
+            SetToggle(BtnRecord, false);
+        }
     }
 
-    private void SetStatus(string text) => StatusText.Text = text;
+    /// <summary>Atualiza o estado visual/anunciado sem disparar a ação do botão.</summary>
+    private void SetToggle(ToggleButton button, bool value)
+    {
+        _syncingToggles = true;
+        try { button.IsChecked = value; }
+        finally { _syncingToggles = false; }
+    }
+
+    private void SetStatus(string text)
+    {
+        StatusText.Text = text;
+        Announce(StatusText);
+    }
+
+    private void SetParticipants(int count)
+    {
+        var text = $"Participantes conectados: {count}";
+        if (ParticipantsText.Text == text) return;
+        ParticipantsText.Text = text;
+        Announce(ParticipantsText);
+    }
+
+    /// <summary>Avisa o leitor de tela (Narrador, NVDA, JAWS) que uma região "ao vivo" mudou.</summary>
+    private static void Announce(UIElement element)
+    {
+        var peer = UIElementAutomationPeer.FromElement(element) ?? UIElementAutomationPeer.CreatePeerForElement(element);
+        peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+    }
 
     private async void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
     {
@@ -281,5 +346,9 @@ public partial class MainWindow : Window
     [DllImport("kernel32.dll")]
     private static extern uint SetThreadExecutionState(uint flags);
 
-    private sealed record MicItem(int DeviceNumber, string Name);
+    // ToString é o que o leitor de tela lê para cada item da lista.
+    private sealed record MicItem(int DeviceNumber, string Name)
+    {
+        public override string ToString() => Name;
+    }
 }
