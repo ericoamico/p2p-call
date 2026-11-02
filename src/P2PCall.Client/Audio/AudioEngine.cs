@@ -27,6 +27,7 @@ public sealed class AudioEngine : IDisposable
     private readonly object _encoderLock = new();
     private readonly IOpusEncoder _encoder;
     private readonly byte[] _captureAccumulator = new byte[FrameSamples * 2];
+    private readonly short[] _stereoFrame = new short[FrameSamples * 2];
     private readonly byte[] _opusOutput = new byte[MaxOpusPacket];
     private int _accumulated;
 
@@ -44,7 +45,8 @@ public sealed class AudioEngine : IDisposable
 
     public AudioEngine(int bitrateBps)
     {
-        _encoder = OpusCodecFactory.CreateEncoder(SampleRate, 1, OpusApplication.OPUS_APPLICATION_AUDIO);
+        // Estéreo por causa do áudio do PC; o microfone (mono) vai igual nos dois canais.
+        _encoder = OpusCodecFactory.CreateEncoder(SampleRate, 2, OpusApplication.OPUS_APPLICATION_AUDIO);
         _encoder.Bitrate = bitrateBps;
         _encoder.UseInbandFEC = true;
         _encoder.PacketLossPercent = 10;
@@ -178,17 +180,25 @@ public sealed class AudioEngine : IDisposable
             if (_accumulated < frameBytes) continue;
             _accumulated = 0;
 
-            var frame = _captureAccumulator.AsSpan(0, frameBytes);
-            if (IsMuted) frame.Clear();
+            var mic = MemoryMarshal.Cast<byte, short>(_captureAccumulator.AsSpan(0, frameBytes));
+            var frame = _stereoFrame.AsSpan();
+            if (IsMuted)
+            {
+                frame.Clear();
+            }
+            else
+            {
+                for (int i = 0; i < FrameSamples; i++) frame[2 * i] = frame[2 * i + 1] = mic[i];
+            }
             // Silenciar corta só o microfone: o áudio do PC compartilhado continua indo.
             _systemAudio?.MixInto(frame);
 
-            _tap.AddMicSamples(frame);
+            _tap.AddMicSamples(MemoryMarshal.AsBytes(frame));
 
             byte[] packet;
             lock (_encoderLock)
             {
-                int len = _encoder.Encode(MemoryMarshal.Cast<byte, short>(frame), FrameSamples, _opusOutput, MaxOpusPacket);
+                int len = _encoder.Encode(frame, FrameSamples, _opusOutput, MaxOpusPacket);
                 if (len <= 0) continue;
                 packet = _opusOutput.AsSpan(0, len).ToArray();
             }
@@ -270,12 +280,12 @@ public sealed class AudioEngine : IDisposable
         public RecordingTap(ISampleProvider source)
         {
             _source = source;
-            _micBuffer = new BufferedWaveProvider(Pcm16Mono, TimeSpan.FromSeconds(2))
+            _micBuffer = new BufferedWaveProvider(Pcm16Stereo, TimeSpan.FromSeconds(2))
             {
                 DiscardOnBufferOverflow = true,
                 ReadFully = true,
             };
-            _mic = _micBuffer.ToSampleProvider().ToStereo();
+            _mic = _micBuffer.ToSampleProvider();
         }
 
         public void Start(string path)
@@ -301,10 +311,10 @@ public sealed class AudioEngine : IDisposable
             }
         }
 
-        public void AddMicSamples(ReadOnlySpan<byte> pcm16Mono)
+        public void AddMicSamples(ReadOnlySpan<byte> pcm16Stereo)
         {
             if (_writer is null) return;
-            _micBuffer.AddSamples(pcm16Mono);
+            _micBuffer.AddSamples(pcm16Stereo);
         }
 
         public int Read(Span<float> buffer)

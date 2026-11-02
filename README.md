@@ -14,7 +14,7 @@ participantes web e desktop na mesma sala.
 - Gravação da chamada (microfone + áudio do PC compartilhado + participantes) em WAV, salva em `Músicas\P2PCall`
 - **Compartilhar tela**: tela principal em VP8 (até 1600 px, 12 fps, com cursor); as telas
   recebidas aparecem em grade e somem 3 s depois que o participante para de compartilhar
-- **Áudio do PC** junto com a tela: capturado com o loopback por processo do Windows *excluindo*
+- **Áudio do PC** (em estéreo) junto com a tela: capturado com o loopback por processo do Windows *excluindo*
   o próprio aplicativo, então as vozes da chamada que tocam no seu PC não voltam para quem está
   vendo (ninguém se ouve duas vezes). É somado à trilha do microfone — chega a todos, inclusive
   participantes web, sem renegociação — e continua indo com o microfone silenciado.
