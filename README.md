@@ -43,6 +43,18 @@ Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
   "Entrar na sala" ao sair
 - Anel de foco bem visível e contraste de texto acima de 4,5:1
 
+## Download
+
+Cada push na `main` gera, pelo GitHub Actions (`.github/workflows/build.yml`), um `P2PCall.exe`
+único com o .NET e todas as dependências embutidos — não precisa instalar nada. Baixe a versão
+mais recente em [Releases](https://github.com/ericoamico/p2p-call/releases/latest).
+
+Para gerar o mesmo exe localmente:
+
+```bash
+dotnet publish src/P2PCall.Client -c Release -o publish
+```
+
 ## Executar
 
 O servidor padrão é `https://voz.tempsharing.com.br`. Para testar localmente, use o servidor mínimo incluso em `server/`:

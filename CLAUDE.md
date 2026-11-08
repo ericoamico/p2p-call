@@ -11,7 +11,10 @@ WPF (.NET 9, `net9.0-windows`) desktop client for P2P voice calls with screen sh
 ```bash
 dotnet build P2PCall.sln
 dotnet run --project src/P2PCall.Client -- --sala minhaSala [--server http://localhost:3000]
+dotnet publish src/P2PCall.Client -c Release -o publish   # P2PCall.exe único, self-contained
 ```
+
+`.github/workflows/build.yml` publishes that exe and creates a GitHub release (`v1.0.<run>`) on every push to `main` of `ericoamico/p2p-call`.
 
 Default server is `https://voz.tempsharing.com.br`. Local signaling server for testing:
 

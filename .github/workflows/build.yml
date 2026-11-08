@@ -1,0 +1,43 @@
+name: Build
+
+# A cada push na main: gera o P2PCall.exe (arquivo único, com todas as dependências)
+# e publica uma release com o executável para download.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publicar exe único
+        run: dotnet publish src/P2PCall.Client -c Release -o out
+
+      - name: Enviar artefato
+        uses: actions/upload-artifact@v4
+        with:
+          name: P2PCall
+          path: out/P2PCall.exe
+
+      - name: Criar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          tag="v1.0.${{ github.run_number }}"
+          msg=$(git log -1 --pretty=%s)
+          gh release create "$tag" out/P2PCall.exe \
+            --target "${{ github.sha }}" \
+            --title "P2P Call $tag" \
+            --notes "Build automática do commit ${{ github.sha }}: $msg" \
+            --latest
