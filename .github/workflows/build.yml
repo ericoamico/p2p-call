@@ -21,7 +21,8 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Publicar exe único
-        run: dotnet publish src/P2PCall.Client -c Release -o out
+        # A versão do exe acompanha a tag da release (o atualizador compara as duas).
+        run: dotnet publish src/P2PCall.Client -c Release -o out -p:Version=1.0.${{ github.run_number }}
 
       - name: Enviar artefato
         uses: actions/upload-artifact@v4

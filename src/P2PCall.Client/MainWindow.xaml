@@ -89,6 +89,22 @@
                 <TextBlock Text="Chamada P2P" FontSize="22" FontWeight="SemiBold"
                            AutomationProperties.HeadingLevel="Level1" />
 
+                <!-- Aviso de nova versão: aparece só quando há atualização no GitHub. -->
+                <Border x:Name="UpdateBanner" Visibility="Collapsed" Margin="0,12,0,0" Padding="10" CornerRadius="6"
+                        Background="#1B2A45" BorderBrush="#6E9BF5" BorderThickness="1"
+                        AutomationProperties.Name="Atualização disponível">
+                    <StackPanel>
+                        <TextBlock x:Name="UpdateText" TextWrapping="Wrap"
+                                   AutomationProperties.LiveSetting="Polite"
+                                   AutomationProperties.HelpText="Status da atualização" />
+                        <ProgressBar x:Name="UpdateProgress" Visibility="Collapsed" Height="8" Margin="0,8,0,0"
+                                     Minimum="0" Maximum="100"
+                                     AutomationProperties.Name="Progresso do download da atualização" />
+                        <a11y:AccessibleButton x:Name="BtnUpdate" Content="_Baixar e atualizar" Click="BtnUpdate_Click"
+                                AutomationProperties.HelpText="Baixa a nova versão, fecha o aplicativo, substitui o arquivo e abre a nova versão. Atalho: Alt+B." />
+                    </StackPanel>
+                </Border>
+
                 <a11y:AccessibleLabel x:Name="ServerLabel" Content="Ser_vidor de sinalização" Target="{Binding ElementName=ServerInput}" />
                 <TextBox x:Name="ServerInput" Text="https://voz.tempsharing.com.br"
                          AutomationProperties.Name="Servidor de sinalização"

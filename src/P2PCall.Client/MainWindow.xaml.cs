@@ -9,6 +9,7 @@ using System.Windows.Input;
 using System.Windows.Threading;
 using P2PCall.Client.Audio;
 using P2PCall.Client.Call;
+using P2PCall.Client.Update;
 using P2PCall.Client.Video;
 
 namespace P2PCall.Client;
@@ -25,6 +26,8 @@ public partial class MainWindow : Window
     private bool _isMuted;
     private bool _syncingToggles;
     private Uri? _joinedServer;
+    private ReleaseInfo? _availableUpdate;
+    private CancellationTokenSource? _updateCts;
 
     public MainWindow()
     {
@@ -36,6 +39,7 @@ public partial class MainWindow : Window
 
         ApplyCommandLine(Environment.GetCommandLineArgs());
         LoadMicrophones();
+        Loaded += async (_, _) => await CheckForUpdateAsync();
     }
 
     /// <summary>Equivalente ao ?sala= da versão web: P2PCall.Client.exe --sala nome [--server url].</summary>
@@ -65,6 +69,118 @@ public partial class MainWindow : Window
 
     private int SelectedBitrate =>
         QualitySelect.SelectedItem is ComboBoxItem { Tag: string tag } ? int.Parse(tag) : 128000;
+
+    // ---------- Atualização automática ----------
+
+    private async Task CheckForUpdateAsync()
+    {
+        if (!UpdateService.IsSupported) return;
+
+        var args = Environment.GetCommandLineArgs();
+        var local = UpdateService.SyncLocalVersion();
+        UpdateService.CleanupLeftovers();
+        if (args.Contains("--atualizado")) SetStatus($"Atualizado para a versão {local}.");
+        if (args.Contains("--falha-atualizacao"))
+            SetStatus("Não foi possível substituir o arquivo durante a atualização. Feche outras cópias do aplicativo e tente de novo.");
+
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            var release = await UpdateService.CheckAsync(local, cts.Token);
+            if (release is null) return;
+
+            _availableUpdate = release;
+            UpdateBanner.Visibility = Visibility.Visible;
+            SetUpdateText($"Nova versão {release.Version} disponível. Você usa a versão {local}.");
+        }
+        catch
+        {
+            // Sem internet ou GitHub fora do ar: tenta de novo na próxima vez que abrir.
+        }
+    }
+
+    private async void BtnUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        // Durante o download o mesmo botão cancela (o foco continua nele).
+        if (_updateCts is not null)
+        {
+            _updateCts.Cancel();
+            return;
+        }
+        if (_availableUpdate is not { } release) return;
+
+        if (_call is not null && MessageBox.Show(this,
+                "Você está em uma chamada. A atualização encerra a chamada e reinicia o aplicativo. Continuar?",
+                "Atualizar P2P Call", MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        _updateCts = new CancellationTokenSource();
+        BtnUpdate.Content = "Parar de _baixar";
+        UpdateProgress.Value = 0;
+        UpdateProgress.Visibility = Visibility.Visible;
+        SetUpdateText($"Baixando a versão {release.Version}...");
+
+        string downloaded;
+        try
+        {
+            int announcedQuarter = 0;
+            var progress = new Progress<double>(p =>
+            {
+                UpdateProgress.Value = p * 100;
+                // Anuncia a cada 25% para não inundar o leitor de tela.
+                int quarter = (int)(p * 4);
+                if (quarter > announcedQuarter && quarter < 4)
+                {
+                    announcedQuarter = quarter;
+                    SetUpdateText($"Baixando a versão {release.Version}: {quarter * 25}%.");
+                }
+            });
+            downloaded = await UpdateService.DownloadAsync(release, progress, _updateCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            ResetUpdateUi("Download da atualização cancelado.");
+            return;
+        }
+        catch (Exception ex)
+        {
+            ResetUpdateUi("Falha ao baixar a atualização: " + ex.Message);
+            return;
+        }
+        finally
+        {
+            _updateCts?.Dispose();
+            _updateCts = null;
+        }
+
+        SetUpdateText("Download concluído. O aplicativo vai fechar e abrir a nova versão.");
+        await LeaveCallAsync();
+        try
+        {
+            UpdateService.ApplyAndRestart(downloaded);
+        }
+        catch (Exception ex)
+        {
+            ResetUpdateUi("Não foi possível instalar a atualização: " + ex.Message);
+            return;
+        }
+        Application.Current.Shutdown();
+    }
+
+    private void ResetUpdateUi(string message)
+    {
+        BtnUpdate.Content = "_Baixar e atualizar";
+        UpdateProgress.Visibility = Visibility.Collapsed;
+        SetUpdateText(message);
+    }
+
+    private void SetUpdateText(string text)
+    {
+        UpdateText.Text = text;
+        Announce(UpdateText);
+    }
 
     // Ao colar um link de sala (o mesmo formato do navegador), fica só o nome da sala;
     // se o link for de outro servidor, o campo do servidor também é ajustado.

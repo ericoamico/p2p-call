@@ -23,6 +23,9 @@ participantes web e desktop na mesma sala.
   participantes web, sem renegociação — e continua indo com o microfone silenciado.
   Requer Windows 10 versão 2004 ou mais recente; em versões antigas a tela vai sem áudio
 - Mantém o PC acordado durante a chamada (equivalente ao Wake Lock)
+- **Atualização automática**: ao abrir, compara a versão local (`latest.json`, ao lado do exe) com a
+  última release do GitHub. Se houver uma nova, mostra o aviso com "Baixar e atualizar": o app baixa
+  o exe (conferindo tamanho e SHA-256), fecha, substitui o arquivo e abre a nova versão sozinho
 
 > Participantes web só negociam áudio — eles falam e ouvem normalmente, mas não recebem a tela.
 > A resposta SDP do cliente desktop espelha exatamente as m-lines da oferta (o navegador rejeita
@@ -36,7 +39,8 @@ Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
 
 - Todo campo tem rótulo associado, nome acessível e dica (`HelpText`); "Sala" é marcado como obrigatório
 - Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+C** microfone, **Alt+Q** qualidade,
-  **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+L** copiar link, **Alt+R** sair
+  **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+L** copiar link, **Alt+R** sair,
+  **Alt+B** baixar atualização (quando houver)
 - **Ctrl+M** silencia/ativa o microfone de qualquer lugar da janela
 - Silenciar, compartilhar tela e gravar são botões de alternância: o leitor anuncia
   "pressionado"/"não pressionado" (como o `aria-pressed` do web) e funcionam pelo padrão Toggle da automação
@@ -51,6 +55,8 @@ Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
 Cada push na `main` gera, pelo GitHub Actions (`.github/workflows/build.yml`), um `P2PCall.exe`
 único com o .NET e todas as dependências embutidos — não precisa instalar nada. Baixe a versão
 mais recente em [Releases](https://github.com/ericoamico/p2p-call/releases/latest).
+Depois disso o próprio app avisa e instala as novas versões (só quem tem uma versão anterior à
+1.0.3, sem o atualizador, precisa baixar manualmente uma vez).
 
 Para gerar o mesmo exe localmente:
 
