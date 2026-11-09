@@ -11,6 +11,9 @@ participantes web e desktop na mesma sala.
 - Captura e reprodução com [NAudio](https://github.com/naudio/NAudio), sem eco/ruído/AGC (áudio cru, como no web)
 - Seleção de microfone (troca durante a chamada) e qualidade de envio (32–510 kbps)
 - Silenciar microfone
+- **Nome de exibição** (opcional, até 40 caracteres) escolhido antes de entrar, e lista **Na sala** com
+  você e os participantes conectados; entradas e saídas são anunciadas pelo nome. As telas compartilhadas
+  também mostram o nome. Participantes web (e versões antigas) aparecem como "Participante xxxx"
 - **Link da sala**: "Copiar link da sala" copia `https://servidor/?sala=nome`, o mesmo formato da versão web
   (abre no navegador ou neste app). Colar um link desses no campo Sala deixa só o nome da sala e,
   se for de outro servidor, ajusta o campo do servidor; `--sala` também aceita um link
@@ -38,7 +41,7 @@ participantes web e desktop na mesma sala.
 Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
 
 - Todo campo tem rótulo associado, nome acessível e dica (`HelpText`); "Sala" é marcado como obrigatório
-- Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+C** microfone, **Alt+Q** qualidade,
+- Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+N** seu nome, **Alt+C** microfone, **Alt+Q** qualidade,
   **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+L** copiar link, **Alt+R** sair,
   **Alt+B** baixar atualização (quando houver)
 - **Ctrl+M** silencia/ativa o microfone de qualquer lugar da janela

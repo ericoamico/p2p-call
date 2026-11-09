@@ -26,6 +26,10 @@ public partial class MainWindow : Window
     private bool _isMuted;
     private bool _syncingToggles;
     private Uri? _joinedServer;
+    // Nome de exibição escolhido antes de entrar; vai para os outros participantes na negociação.
+    private string _displayName = "";
+    private readonly ObservableCollection<string> _participantItems = [];
+    private Dictionary<string, Participant> _participants = [];
     private ReleaseInfo? _availableUpdate;
     private CancellationTokenSource? _updateCts;
 
@@ -33,6 +37,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         ScreensList.ItemsSource = _screens;
+        ParticipantsList.ItemsSource = _participantItems;
         _screens.CollectionChanged += (_, _) =>
             NoScreensText.Visibility = _screens.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         _screenWatchdog.Tick += (_, _) => RemoveStaleScreens();
@@ -271,11 +276,14 @@ public partial class MainWindow : Window
 
             _call = new CallManager(_audio);
             _call.StatusChanged += msg => Dispatcher.BeginInvoke(() => SetStatus(msg));
-            _call.ParticipantsChanged += n => Dispatcher.BeginInvoke(() => SetParticipants(n));
+            _call.ParticipantsChanged += list => Dispatcher.BeginInvoke(() => UpdateParticipants(list));
             _call.RemoteScreenFrame += OnRemoteScreenFrame;
             _call.PeerLeft += id => Dispatcher.BeginInvoke(() => RemoveScreen(id));
 
-            await _call.JoinAsync(server.ToString(), room);
+            _displayName = Participant.CleanName(NameInput.Text) ?? "";
+            NameInput.Text = _displayName;
+            await _call.JoinAsync(server.ToString(), room, _displayName);
+            UpdateParticipants([]);
             _joinedServer = server;
 
             KeepAwake(true);
@@ -313,7 +321,9 @@ public partial class MainWindow : Window
 
         _screens.Clear();
         KeepAwake(false);
-        SetParticipants(0);
+        _participants = [];
+        _participantItems.Clear();
+        SetParticipantCount(0);
         SetInCallUi(joining: false, inCall: false);
     }
 
@@ -428,7 +438,7 @@ public partial class MainWindow : Window
             var screen = _screens.FirstOrDefault(s => s.PeerId == peerId);
             if (screen is null)
             {
-                screen = new RemoteScreen(peerId);
+                screen = new RemoteScreen(peerId, LabelFor(peerId));
                 _screens.Add(screen);
                 SetStatus($"{screen.Label} começou a ser compartilhada.");
             }
@@ -457,6 +467,7 @@ public partial class MainWindow : Window
     {
         BtnStart.IsEnabled = !joining && !inCall;
         RoomInput.IsEnabled = !joining && !inCall;
+        NameInput.IsEnabled = !joining && !inCall;
         ServerInput.IsEnabled = !joining && !inCall;
         BtnMute.IsEnabled = inCall;
         BtnShare.IsEnabled = inCall;
@@ -485,7 +496,33 @@ public partial class MainWindow : Window
         Announce(StatusText);
     }
 
-    private void SetParticipants(int count)
+    /// <summary>
+    /// Atualiza a lista "Na sala" (você primeiro, depois os conectados) e anuncia quem entrou ou saiu.
+    /// </summary>
+    private void UpdateParticipants(IReadOnlyList<Participant> list)
+    {
+        if (_call is null) return;
+        var previous = _participants;
+        _participants = list.ToDictionary(p => p.Id);
+
+        foreach (var p in list.Where(p => p.Connected && !(previous.TryGetValue(p.Id, out var old) && old.Connected)))
+            SetStatus($"{p.DisplayLabel} entrou na chamada.");
+        foreach (var old in previous.Values.Where(o => o.Connected && !(_participants.TryGetValue(o.Id, out var p) && p.Connected)))
+            SetStatus($"{old.DisplayLabel} saiu da chamada.");
+
+        _participantItems.Clear();
+        _participantItems.Add(_displayName.Length > 0 ? $"{_displayName} (você)" : "Você");
+        foreach (var p in list.Where(p => p.Connected).OrderBy(p => p.DisplayLabel, StringComparer.CurrentCultureIgnoreCase))
+            _participantItems.Add(p.DisplayLabel);
+
+        foreach (var screen in _screens) screen.Owner = LabelFor(screen.PeerId);
+        SetParticipantCount(list.Count(p => p.Connected));
+    }
+
+    private string LabelFor(string peerId) =>
+        _participants.TryGetValue(peerId, out var p) ? p.DisplayLabel : new Participant(peerId, null, false).DisplayLabel;
+
+    private void SetParticipantCount(int count)
     {
         var text = $"Participantes conectados: {count}";
         if (ParticipantsText.Text == text) return;

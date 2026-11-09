@@ -23,6 +23,9 @@ internal sealed class PeerSession : IDisposable
     /// <summary>Nosso papel DTLS ("active"/"passive") definido na primeira negociação.</summary>
     public string? DtlsSetup { get; set; }
 
+    /// <summary>Nome de exibição informado pelo participante (null para clientes web).</summary>
+    public string? DisplayName { get; set; }
+
     public bool IsConnected => Pc.connectionState == RTCPeerConnectionState.connected;
 
     public PeerSession(string id, RTCPeerConnection pc, AudioEngine engine)

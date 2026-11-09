@@ -11,7 +11,21 @@ public sealed class RemoteScreen : INotifyPropertyChanged
     private WriteableBitmap? _bitmap;
 
     public string PeerId { get; }
-    public string Label => $"Tela de {PeerId[..Math.Min(6, PeerId.Length)]}";
+    private string _owner;
+
+    /// <summary>Nome de exibição de quem está compartilhando.</summary>
+    public string Owner
+    {
+        get => _owner;
+        set
+        {
+            if (value == _owner) return;
+            _owner = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Label)));
+        }
+    }
+
+    public string Label => $"Tela de {_owner}";
     public DateTime LastFrameUtc { get; private set; }
 
     public WriteableBitmap? Bitmap
@@ -26,7 +40,11 @@ public sealed class RemoteScreen : INotifyPropertyChanged
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public RemoteScreen(string peerId) => PeerId = peerId;
+    public RemoteScreen(string peerId, string owner)
+    {
+        PeerId = peerId;
+        _owner = owner;
+    }
 
     /// <summary>Copia um frame BGR24 para o bitmap (chamar na thread da UI).</summary>
     public void Update(int width, int height, byte[] bgr)

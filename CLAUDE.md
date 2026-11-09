@@ -27,6 +27,7 @@ There are no test projects and no linter configured.
 ## Architecture
 
 - **Signaling** (`Call/CallManager.cs`): Socket.IO events `join`, `user-joined`, `offer`, `answer`, `ice-candidate`, `user-disconnected`. Payload shapes must match `server/server.js` and the web client (e.g. `ice-candidate` sends both `target` and `to`). The existing participant offers to each newcomer (`OnUserJoined`). All signaling handlers are serialized through `_signalingLock`; ICE candidates arriving before the peer exists are buffered in `_earlyCandidates`, and per-peer ones before the remote description in `PeerSession`.
+- **Display names**: sent as an extra `name` field inside the `offer`/`answer` objects (`{ type, sdp, name }`) — the server forwards those objects untouched and the browser's `RTCSessionDescription` ignores unknown fields, so no server change is needed. `CallManager.LearnName` stores it in `PeerSession.DisplayName` (cleaned by `Participant.CleanName`); web clients and old versions send none and show as "Participante xxxx". A re-offer without `name` keeps the known name. `ParticipantsChanged` carries the full `Participant` list.
 - **One `RTCPeerConnection` (SIPSorcery) per remote participant**, wrapped in `PeerSession` (per-track Opus decoders/audio sinks, VP8 decoder, DTLS role, pending candidates).
 - **Web-compatibility rules in SDP negotiation** (the source of most past bugs):
   - The answer must mirror the offer's m-lines exactly (count, order). `OnOffer` counts `m=audio` lines and only adds video if the offer has `m=video`. Web clients offer audio only (sometimes two audio tracks when sharing PC audio), so they never receive the screen.
@@ -46,4 +47,4 @@ The UI targets screen-reader (Narrator/NVDA/JAWS) and keyboard-only use. When ch
 - Every input needs an associated label, automation name and `HelpText`; mute/screen/record are toggle buttons (announce pressed state).
 - Status and participant count are live regions — announce changes without moving focus.
 - Focus must never be lost: on error to the offending field, on join to "Silenciar microfone", on leave to "Entrar na sala".
-- Keep the existing access keys (Alt+V/S/C/Q/E/M/T/G/L/R/B, Ctrl+M mute) documented in README in sync.
+- Keep the existing access keys (Alt+V/S/N/C/Q/E/M/T/G/L/R/B, Ctrl+M mute) documented in README in sync.

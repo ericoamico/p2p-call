@@ -118,6 +118,12 @@
                          AutomationProperties.IsRequiredForForm="True"
                          AutomationProperties.HelpText="Obrigatório. Digite o nome ou cole o link da sala. Pressione Enter para entrar. Atalho: Alt+S." />
 
+                <a11y:AccessibleLabel x:Name="NameLabel" Content="Seu _nome (opcional)" Target="{Binding ElementName=NameInput}" />
+                <TextBox x:Name="NameInput" MaxLength="40" KeyDown="RoomInput_KeyDown"
+                         AutomationProperties.Name="Seu nome"
+                         AutomationProperties.LabeledBy="{Binding ElementName=NameLabel}"
+                         AutomationProperties.HelpText="Nome que os outros participantes veem na lista. Até 40 caracteres. Atalho: Alt+N." />
+
                 <a11y:AccessibleLabel x:Name="MicLabel" Content="Mi_crofone" Target="{Binding ElementName=MicSelect}" />
                 <ComboBox x:Name="MicSelect" DisplayMemberPath="Name" SelectionChanged="MicSelect_SelectionChanged"
                           AutomationProperties.Name="Microfone"
@@ -165,6 +171,14 @@
                                    AutomationProperties.LiveSetting="Polite" />
                     </StackPanel>
                 </Border>
+
+                <TextBlock x:Name="ParticipantsHeading" Text="Na sala" Margin="0,16,0,6" FontSize="16" FontWeight="SemiBold"
+                           AutomationProperties.HeadingLevel="Level2" />
+                <ListBox x:Name="ParticipantsList" MinHeight="40" MaxHeight="220"
+                         Background="#1E2128" Foreground="#E6E8EC" BorderBrush="#5A6170"
+                         AutomationProperties.Name="Participantes na sala"
+                         AutomationProperties.LabeledBy="{Binding ElementName=ParticipantsHeading}"
+                         AutomationProperties.HelpText="Você e as pessoas conectadas, pelo nome de exibição." />
             </StackPanel>
         </ScrollViewer>
 

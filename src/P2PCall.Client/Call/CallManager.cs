@@ -36,12 +36,15 @@ public sealed class CallManager : IAsyncDisposable
     private SocketIO? _socket;
 
     public event Action<string>? StatusChanged;
-    public event Action<int>? ParticipantsChanged;
+    /// <summary>Lista de participantes remotos (com o nome de exibição, quando informado).</summary>
+    public event Action<IReadOnlyList<Participant>>? ParticipantsChanged;
     /// <summary>Frame de tela remota decodificado (peerId, largura, altura, pixels BGR24).</summary>
     public event Action<string, int, int, byte[]>? RemoteScreenFrame;
     public event Action<string>? PeerLeft;
 
     public string Room { get; private set; } = "";
+    /// <summary>Nosso nome de exibição, enviado aos outros participantes na oferta/resposta.</summary>
+    public string DisplayName { get; private set; } = "";
     public bool IsSharingScreen => _screen.IsRunning;
 
     public CallManager(AudioEngine audio)
@@ -51,9 +54,10 @@ public sealed class CallManager : IAsyncDisposable
         _screen.FrameEncoded += SendVideoToPeers;
     }
 
-    public async Task JoinAsync(string serverUrl, string room)
+    public async Task JoinAsync(string serverUrl, string room, string displayName)
     {
         Room = room;
+        DisplayName = Participant.CleanName(displayName) ?? "";
         var socket = new SocketIO(new Uri(serverUrl));
         _socket = socket;
         bool wasConnected = false;
@@ -121,7 +125,7 @@ public sealed class CallManager : IAsyncDisposable
             var peer = CreatePeer(userId, audioLines: 1, withVideo: true);
             var offer = peer.Pc.createOffer(null);
             await peer.Pc.setLocalDescription(offer);
-            await EmitAsync("offer", new { to = userId, offer = new { type = "offer", sdp = offer.sdp } });
+            await EmitAsync("offer", new { to = userId, offer = new { type = "offer", sdp = offer.sdp, name = DisplayName } });
         }
         catch (Exception ex)
         {
@@ -136,7 +140,8 @@ public sealed class CallManager : IAsyncDisposable
         try
         {
             var from = data.GetProperty("from").GetString()!;
-            var sdp = data.GetProperty("offer").GetProperty("sdp").GetString()!;
+            var offerJson = data.GetProperty("offer");
+            var sdp = offerJson.GetProperty("sdp").GetString()!;
 
             // A resposta precisa ter exatamente as mesmas m-lines da oferta, na mesma ordem:
             // o cliente web oferece só áudio (às vezes duas trilhas, com o áudio do PC).
@@ -169,6 +174,7 @@ public sealed class CallManager : IAsyncDisposable
                 }
             }
             peer.FlushPendingCandidates();
+            LearnName(peer, offerJson);
 
             var answer = peer.Pc.createAnswer(null);
             await peer.Pc.setLocalDescription(answer);
@@ -178,7 +184,7 @@ public sealed class CallManager : IAsyncDisposable
                 answerSdp = SdpDirections.SetDtlsSetup(answerSdp, peer.DtlsSetup);
             else
                 peer.DtlsSetup = SdpDirections.GetDtlsSetup(answerSdp);
-            await EmitAsync("answer", new { to = from, answer = new { type = "answer", sdp = answerSdp } });
+            await EmitAsync("answer", new { to = from, answer = new { type = "answer", sdp = answerSdp, name = DisplayName } });
         }
         catch (Exception ex)
         {
@@ -195,7 +201,9 @@ public sealed class CallManager : IAsyncDisposable
             var from = data.GetProperty("from").GetString()!;
             if (!_peers.TryGetValue(from, out var peer)) return;
 
-            var sdp = data.GetProperty("answer").GetProperty("sdp").GetString()!;
+            var answerJson = data.GetProperty("answer");
+            var sdp = answerJson.GetProperty("sdp").GetString()!;
+            LearnName(peer, answerJson);
             var result = peer.Pc.setRemoteDescription(new RTCSessionDescriptionInit { type = RTCSdpType.answer, sdp = sdp });
             if (result != SetDescriptionResultEnum.OK)
                 StatusChanged?.Invoke($"Resposta incompatível ({result}).");
@@ -289,7 +297,7 @@ public sealed class CallManager : IAsyncDisposable
             {
                 case RTCPeerConnectionState.connected:
                     if (_screen.IsRunning) _screen.RequestKeyFrame();
-                    ParticipantsChanged?.Invoke(ConnectedCount);
+                    NotifyParticipants();
                     break;
                 case RTCPeerConnectionState.failed:
                     StatusChanged?.Invoke("Falha na conexão P2P com um participante.");
@@ -297,7 +305,7 @@ public sealed class CallManager : IAsyncDisposable
                     break;
                 case RTCPeerConnectionState.disconnected:
                 case RTCPeerConnectionState.closed:
-                    ParticipantsChanged?.Invoke(ConnectedCount);
+                    NotifyParticipants();
                     break;
             }
         };
@@ -323,10 +331,25 @@ public sealed class CallManager : IAsyncDisposable
         if (!_peers.TryRemove(peerId, out var peer)) return;
         peer.Dispose();
         PeerLeft?.Invoke(peerId);
-        ParticipantsChanged?.Invoke(ConnectedCount);
+        NotifyParticipants();
     }
 
-    private int ConnectedCount => _peers.Values.Count(p => p.IsConnected);
+    private void NotifyParticipants() =>
+        ParticipantsChanged?.Invoke(_peers.Values.Select(p => new Participant(p.Id, p.DisplayName, p.IsConnected)).ToList());
+
+    /// <summary>
+    /// O nome vem como campo extra ("name") no objeto da oferta/resposta, que o servidor repassa
+    /// sem alterar e o navegador ignora. Clientes web não mandam nome; renegociações sem nome
+    /// mantêm o que já se sabia.
+    /// </summary>
+    private void LearnName(PeerSession peer, JsonElement description)
+    {
+        if (!description.TryGetProperty("name", out var n) || n.ValueKind != JsonValueKind.String) return;
+        var name = Participant.CleanName(n.GetString());
+        if (name is null || name == peer.DisplayName) return;
+        peer.DisplayName = name;
+        NotifyParticipants();
+    }
 
     private void SendAudioToPeers(byte[] opus)
     {
