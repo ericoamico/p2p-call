@@ -11,6 +11,9 @@ participantes web e desktop na mesma sala.
 - Captura e reprodução com [NAudio](https://github.com/naudio/NAudio), sem eco/ruído/AGC (áudio cru, como no web)
 - Seleção de microfone (troca durante a chamada) e qualidade de envio (32–510 kbps)
 - Silenciar microfone
+- **Link da sala**: "Copiar link da sala" copia `https://servidor/?sala=nome`, o mesmo formato da versão web
+  (abre no navegador ou neste app). Colar um link desses no campo Sala deixa só o nome da sala e,
+  se for de outro servidor, ajusta o campo do servidor; `--sala` também aceita um link
 - Gravação da chamada (microfone + áudio do PC compartilhado + participantes) em WAV, salva em `Músicas\P2PCall`
 - **Compartilhar tela**: tela principal em VP8 (até 1600 px, 12 fps, com cursor); as telas
   recebidas aparecem em grade e somem 3 s depois que o participante para de compartilhar
@@ -33,7 +36,7 @@ Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
 
 - Todo campo tem rótulo associado, nome acessível e dica (`HelpText`); "Sala" é marcado como obrigatório
 - Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+C** microfone, **Alt+Q** qualidade,
-  **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+R** sair
+  **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+L** copiar link, **Alt+R** sair
 - **Ctrl+M** silencia/ativa o microfone de qualquer lugar da janela
 - Silenciar, compartilhar tela e gravar são botões de alternância: o leitor anuncia
   "pressionado"/"não pressionado" (como o `aria-pressed` do web) e funcionam pelo padrão Toggle da automação

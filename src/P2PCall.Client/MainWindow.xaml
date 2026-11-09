@@ -96,11 +96,11 @@
                          AutomationProperties.HelpText="Endereço do servidor que conecta os participantes. Atalho: Alt+V." />
 
                 <a11y:AccessibleLabel x:Name="RoomLabel" Content="_Sala" Target="{Binding ElementName=RoomInput}" />
-                <TextBox x:Name="RoomInput" KeyDown="RoomInput_KeyDown"
+                <TextBox x:Name="RoomInput" KeyDown="RoomInput_KeyDown" TextChanged="RoomInput_TextChanged"
                          AutomationProperties.Name="Nome da sala"
                          AutomationProperties.LabeledBy="{Binding ElementName=RoomLabel}"
                          AutomationProperties.IsRequiredForForm="True"
-                         AutomationProperties.HelpText="Obrigatório. Pressione Enter para entrar na sala. Atalho: Alt+S." />
+                         AutomationProperties.HelpText="Obrigatório. Digite o nome ou cole o link da sala. Pressione Enter para entrar. Atalho: Alt+S." />
 
                 <a11y:AccessibleLabel x:Name="MicLabel" Content="Mi_crofone" Target="{Binding ElementName=MicSelect}" />
                 <ComboBox x:Name="MicSelect" DisplayMemberPath="Name" SelectionChanged="MicSelect_SelectionChanged"
@@ -133,6 +133,8 @@
                 <a11y:AccessibleToggleButton x:Name="BtnRecord" Content="_Gravar Chamada" IsEnabled="False" Checked="BtnRecord_Toggled" Unchecked="BtnRecord_Toggled"
                               AutomationProperties.Name="Gravar chamada"
                               AutomationProperties.HelpText="Quando pressionado, a chamada está sendo gravada. Solte para salvar o arquivo. Atalho: Alt+G." />
+                <a11y:AccessibleButton x:Name="BtnCopyLink" Content="Copiar _link da sala" IsEnabled="False" Click="BtnCopyLink_Click"
+                        AutomationProperties.HelpText="Copia o link da sala para a área de transferência. Funciona no navegador e neste aplicativo. Atalho: Alt+L." />
                 <a11y:AccessibleButton x:Name="BtnLeave" Content="Sai_r da sala" IsEnabled="False" Click="BtnLeave_Click"
                         AutomationProperties.HelpText="Atalho: Alt+R." />
 

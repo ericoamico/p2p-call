@@ -24,6 +24,7 @@ public partial class MainWindow : Window
     private CallManager? _call;
     private bool _isMuted;
     private bool _syncingToggles;
+    private Uri? _joinedServer;
 
     public MainWindow()
     {
@@ -64,6 +65,54 @@ public partial class MainWindow : Window
 
     private int SelectedBitrate =>
         QualitySelect.SelectedItem is ComboBoxItem { Tag: string tag } ? int.Parse(tag) : 128000;
+
+    // Ao colar um link de sala (o mesmo formato do navegador), fica só o nome da sala;
+    // se o link for de outro servidor, o campo do servidor também é ajustado.
+    private void RoomInput_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (!RoomLink.TryParse(RoomInput.Text, out var server, out var room)) return;
+
+        RoomInput.Text = room;
+        RoomInput.CaretIndex = room.Length;
+
+        bool sameServer = Uri.TryCreate(ServerInput.Text.Trim(), UriKind.Absolute, out var current)
+            && Uri.Compare(current, new Uri(server), UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0;
+        if (sameServer)
+        {
+            SetStatus($"Link reconhecido: sala {room}.");
+        }
+        else
+        {
+            ServerInput.Text = server;
+            SetStatus($"Link reconhecido: sala {room}, servidor {server}.");
+        }
+    }
+
+    private void BtnCopyLink_Click(object sender, RoutedEventArgs e)
+    {
+        if (_call is null || _joinedServer is null) return;
+        var link = RoomLink.Build(_joinedServer, _call.Room);
+
+        // A área de transferência pode estar momentaneamente presa por outro programa.
+        for (int attempt = 0; ; attempt++)
+        {
+            try
+            {
+                Clipboard.SetText(link);
+                SetStatus($"Link da sala copiado: {link}");
+                return;
+            }
+            catch (COMException) when (attempt < 4)
+            {
+                Thread.Sleep(50);
+            }
+            catch (Exception ex)
+            {
+                SetStatus("Não foi possível copiar o link: " + ex.Message);
+                return;
+            }
+        }
+    }
 
     private async void BtnStart_Click(object sender, RoutedEventArgs e) => await JoinCallAsync();
 
@@ -111,6 +160,7 @@ public partial class MainWindow : Window
             _call.PeerLeft += id => Dispatcher.BeginInvoke(() => RemoveScreen(id));
 
             await _call.JoinAsync(server.ToString(), room);
+            _joinedServer = server;
 
             KeepAwake(true);
             _screenWatchdog.Start();
@@ -295,6 +345,7 @@ public partial class MainWindow : Window
         BtnMute.IsEnabled = inCall;
         BtnShare.IsEnabled = inCall;
         BtnRecord.IsEnabled = inCall;
+        BtnCopyLink.IsEnabled = inCall;
         BtnLeave.IsEnabled = inCall;
         SetToggle(BtnMute, _isMuted);
         if (!inCall)

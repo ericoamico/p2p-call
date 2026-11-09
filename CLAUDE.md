@@ -36,7 +36,7 @@ There are no test projects and no linter configured.
 - **Audio** (`Audio/AudioEngine.cs`): NAudio `WaveIn` mono capture, duplicated to stereo → Concentus stereo Opus encoder (48 kHz, 20 ms / 960-sample frames, FEC) → `EncodedFrameReady` → `CallManager.SendAudioToPeers`. Remote tracks each get a `RemoteAudioSink` feeding a `MixingSampleProvider` → `WaveOut`. `RecordingTap` sits on the mixer and also takes mic samples to write the call to WAV. No echo cancellation/noise suppression/AGC by design (matches web raw audio).
 - **System audio** (`Audio/SystemAudioCapture.cs`): while screen sharing, WASAPI process loopback with `ExcludeTargetProcessTree` on our own PID captures all PC audio *except* this app, so remote voices we play are never sent back (viewers don't hear themselves twice). It stays stereo (L/R) and is summed into the stereo frame (mic duplicated on both channels) after the mute is applied, so muting only silences the mic; the same frame is encoded and recorded — one audio track, no SDP change. Never fall back to whole-system loopback (it would echo); unsupported Windows just shares the screen without audio.
 - **Video** (`Video/`): `ScreenSharer` captures the primary screen via GDI and encodes VP8 (max 1600 px, 12 fps, cursor drawn); `RemoteScreen` displays decoded frames. `MainWindow` removes a remote screen ~3 s after frames stop (`_screenWatchdog`).
-- **UI** (`MainWindow.xaml(.cs)`): `CallManager` events fire on background threads and are marshalled with `Dispatcher.BeginInvoke`. Also keeps the PC awake during a call via `SetThreadExecutionState`.
+- **UI** (`MainWindow.xaml(.cs)`): `CallManager` events fire on background threads and are marshalled with `Dispatcher.BeginInvoke`. Also keeps the PC awake during a call via `SetThreadExecutionState`. Room links (`Call/RoomLink.cs`) use the web format `https://server/?sala=<name>`: the copy-link button builds one, and pasting one into the room field (`RoomInput_TextChanged`) keeps only the room name and updates the server field if it differs.
 
 ## Accessibility (must be preserved)
 
@@ -45,4 +45,4 @@ The UI targets screen-reader (Narrator/NVDA/JAWS) and keyboard-only use. When ch
 - Every input needs an associated label, automation name and `HelpText`; mute/screen/record are toggle buttons (announce pressed state).
 - Status and participant count are live regions — announce changes without moving focus.
 - Focus must never be lost: on error to the offending field, on join to "Silenciar microfone", on leave to "Entrar na sala".
-- Keep the existing access keys (Alt+V/S/C/Q/E/M/T/G/R, Ctrl+M mute) documented in README in sync.
+- Keep the existing access keys (Alt+V/S/C/Q/E/M/T/G/L/R, Ctrl+M mute) documented in README in sync.
