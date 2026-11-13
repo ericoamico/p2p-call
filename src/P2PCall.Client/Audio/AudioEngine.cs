@@ -45,6 +45,9 @@ public sealed class AudioEngine : IDisposable
     public bool IsRecording => _tap.IsRecording;
     public bool IsSharingSystemAudio => _systemAudio is not null;
 
+    /// <summary>Dispositivo onde as vozes remotas tocam (-1 = dispositivo padrão do Windows).</summary>
+    public int PlaybackDeviceNumber { get; private set; } = -1;
+
     public AudioEngine(int bitrateBps)
     {
         // Estéreo por causa do áudio do PC; o microfone (mono) vai igual nos dois canais.
@@ -63,6 +66,18 @@ public sealed class AudioEngine : IDisposable
         {
             var caps = WaveIn.GetCapabilities(i);
             list.Add((i, string.IsNullOrWhiteSpace(caps.ProductName) ? $"Microfone {i + 1}" : caps.ProductName));
+        }
+        return list;
+    }
+
+    /// <summary>Saídas de áudio (alto-falantes/fones) disponíveis no Windows.</summary>
+    public static IReadOnlyList<(int DeviceNumber, string Name)> GetSpeakers()
+    {
+        var list = new List<(int, string)>();
+        for (int i = 0; i < WaveOut.DeviceCount; i++)
+        {
+            var caps = WaveOut.GetCapabilities(i);
+            list.Add((i, string.IsNullOrWhiteSpace(caps.ProductName) ? $"Saída {i + 1}" : caps.ProductName));
         }
         return list;
     }
@@ -138,12 +153,53 @@ public sealed class AudioEngine : IDisposable
         Interlocked.Exchange(ref _systemAudio, null)?.Dispose();
     }
 
-    public void StartPlayback()
+    /// <summary>Inicia a reprodução no dispositivo escolhido (-1 = padrão do Windows).</summary>
+    public void StartPlayback(int deviceNumber = -1)
     {
-        if (_output is not null) return;
-        _output = new WaveOut { BufferMilliseconds = 40, NumberOfBuffers = 3 };
-        _output.Init(_tap);
-        _output.Play();
+        if (_output is not null)
+        {
+            if (PlaybackDeviceNumber == deviceNumber) return;
+            StopPlayback();
+        }
+
+        var output = new WaveOut
+        {
+            DeviceNumber = deviceNumber,
+            BufferMilliseconds = 40,
+            NumberOfBuffers = 3,
+        };
+        try
+        {
+            output.Init(_tap);
+            output.Play();
+        }
+        catch
+        {
+            output.Dispose();
+            throw;
+        }
+        _output = output;
+        PlaybackDeviceNumber = deviceNumber;
+    }
+
+    /// <summary>
+    /// Troca a saída de áudio durante a chamada. Se o novo dispositivo falhar, volta para o anterior.
+    /// </summary>
+    public void ChangePlaybackDevice(int deviceNumber)
+    {
+        if (deviceNumber == PlaybackDeviceNumber) return;
+
+        int previous = PlaybackDeviceNumber;
+        StopPlayback();
+        try
+        {
+            StartPlayback(deviceNumber);
+        }
+        catch
+        {
+            try { StartPlayback(previous); } catch { /* sem saída disponível */ }
+            throw;
+        }
     }
 
     public void StopPlayback()

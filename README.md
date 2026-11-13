@@ -9,7 +9,8 @@ participantes web e desktop na mesma sala.
 
 - Áudio P2P via WebRTC ([SIPSorcery](https://github.com/sipsorcery-org/sipsorcery)), Opus estéreo/FEC ([Concentus](https://github.com/lostromb/concentus))
 - Captura e reprodução com [NAudio](https://github.com/naudio/NAudio), sem eco/ruído/AGC (áudio cru, como no web)
-- Seleção de microfone (troca durante a chamada) e qualidade de envio (32–510 kbps)
+- Seleção de microfone e de **dispositivo de saída** (onde você ouve os participantes); ambos podem ser
+  trocados durante a chamada. Qualidade de envio (32–510 kbps)
 - Silenciar microfone
 - **Modo de entrada**: "Detecção de voz" (microfone aberto, transmite enquanto você fala) ou
   "Aperte para falar" — o microfone só transmite enquanto você segura a tecla escolhida (padrão
@@ -48,8 +49,8 @@ participantes web e desktop na mesma sala.
 Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
 
 - Todo campo tem rótulo associado, nome acessível e dica (`HelpText`); "Sala" é marcado como obrigatório
-- Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+N** seu nome, **Alt+C** microfone, **Alt+Q** qualidade,
-  **Alt+D** modo de entrada, **Alt+F** tecla para falar,
+- Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+N** seu nome, **Alt+C** microfone,
+  **Alt+D** modo de entrada, **Alt+I** dispositivo de saída, **Alt+Q** qualidade, **Alt+F** tecla para falar,
   **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+L** copiar link, **Alt+R** sair,
   **Alt+B** baixar atualização (quando houver)
 - **Ctrl+M** silencia/ativa o microfone de qualquer lugar da janela

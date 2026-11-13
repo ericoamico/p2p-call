@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private CallManager? _call;
     private bool _isMuted;
     private bool _syncingToggles;
+    private bool _syncingSpeakers;
     private Uri? _joinedServer;
     // Nome de exibição escolhido antes de entrar; vai para os outros participantes na negociação.
     private string _displayName = "";
@@ -60,6 +61,7 @@ public partial class MainWindow : Window
 
         ApplyCommandLine(Environment.GetCommandLineArgs());
         LoadMicrophones();
+        LoadSpeakers();
         Loaded += async (_, _) => await CheckForUpdateAsync();
     }
 
@@ -85,6 +87,21 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             SetStatus("Erro ao listar dispositivos: " + ex.Message);
+        }
+    }
+
+    private void LoadSpeakers()
+    {
+        try
+        {
+            var speakers = AudioEngine.GetSpeakers().Select(s => new SpeakerItem(s.DeviceNumber, s.Name)).ToList();
+            SpeakerSelect.ItemsSource = speakers;
+            SpeakerSelect.SelectedIndex = speakers.Count > 0 ? 0 : -1;
+            if (speakers.Count == 0) SetStatus("Nenhum dispositivo de saída de áudio encontrado.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Erro ao listar as saídas de áudio: " + ex.Message);
         }
     }
 
@@ -274,6 +291,12 @@ public partial class MainWindow : Window
             MicSelect.Focus();
             return;
         }
+        if (SpeakerSelect.SelectedItem is not SpeakerItem speaker)
+        {
+            SetStatus("Selecione um dispositivo de saída de áudio.");
+            SpeakerSelect.Focus();
+            return;
+        }
         if (!Uri.TryCreate(ServerInput.Text.Trim(), UriKind.Absolute, out var server))
         {
             SetStatus("Endereço do servidor inválido.");
@@ -288,7 +311,7 @@ public partial class MainWindow : Window
         {
             _audio = new AudioEngine(SelectedBitrate) { IsMuted = MicClosed };
             _audio.StartCapture(mic.DeviceNumber);
-            _audio.StartPlayback();
+            _audio.StartPlayback(speaker.DeviceNumber);
 
             _call = new CallManager(_audio);
             _call.StatusChanged += msg => Dispatcher.BeginInvoke(() => SetStatus(msg));
@@ -537,6 +560,33 @@ public partial class MainWindow : Window
     private void QualitySelect_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         _audio?.SetBitrate(SelectedBitrate);
 
+    // Troca a saída de áudio durante a chamada; se o dispositivo falhar, a seleção volta ao anterior.
+    private void SpeakerSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_audio is null || _syncingSpeakers || SpeakerSelect.SelectedItem is not SpeakerItem speaker) return;
+        try
+        {
+            _audio.ChangePlaybackDevice(speaker.DeviceNumber);
+            SetStatus($"Ouvindo em: {speaker.Name}.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Erro ao trocar o dispositivo de saída: " + ex.Message);
+            _syncingSpeakers = true;
+            try
+            {
+                SpeakerSelect.SelectedItem = SpeakerSelect.Items
+                    .Cast<SpeakerItem>()
+                    .FirstOrDefault(s => s.DeviceNumber == _audio.PlaybackDeviceNumber) ?? SpeakerSelect.SelectedItem;
+            }
+            finally
+            {
+                _syncingSpeakers = false;
+            }
+            SpeakerSelect.Focus();
+        }
+    }
+
     private async void BtnShare_Toggled(object sender, RoutedEventArgs e)
     {
         if (_syncingToggles || _call is null) return;
@@ -733,6 +783,11 @@ public partial class MainWindow : Window
     }
 
     private sealed record MicItem(int DeviceNumber, string Name)
+    {
+        public override string ToString() => Name;
+    }
+
+    private sealed record SpeakerItem(int DeviceNumber, string Name)
     {
         public override string ToString() => Name;
     }
