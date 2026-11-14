@@ -19,6 +19,10 @@ participantes web e desktop na mesma sala.
   Modo e tecla ficam salvos em `%APPDATA%\P2PCall\preferencias.json`. Silenciar tem prioridade
   sobre a tecla. Limitação do Windows: com uma janela de administrador em foco, a tecla só é vista
   se o P2P Call também for aberto como administrador
+- **Áudio por participante (só na escuta)**: na lista "Na sala", clique com o botão direito (ou use a
+  tecla Aplicativos) em um nome para **silenciá-lo** ou ajustar o **volume dele de 0 a 200%** no
+  controle deslizante (setas). Não muda o microfone da pessoa nem o que os outros ouvem, e a gravação
+  sai com esses ajustes aplicados, como você ouviu
 - **Nome de exibição** (opcional, até 40 caracteres) escolhido antes de entrar, e lista **Na sala** com
   você e os participantes conectados; entradas e saídas são anunciadas pelo nome. As telas compartilhadas
   também mostram o nome. Participantes web (e versões antigas) aparecem como "Participante xxxx"
@@ -58,6 +62,9 @@ Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
   "pressionado"/"não pressionado" (como o `aria-pressed` do web) e funcionam pelo padrão Toggle da automação
 - Status e número de participantes são regiões "ao vivo": mudanças são anunciadas sem mover o foco
   (inclui mute, início/fim de compartilhamento de tela de outros participantes, gravação salva)
+- O menu de áudio de cada participante abre pelo botão direito ou pela tecla Aplicativos (Menu/Shift+F10)
+  com a linha selecionada e o foco mantido; a opção de silenciar fecha o menu, e o volume é um controle
+  deslizante no submenu, ajustado com as setas (sem botões extras nem digitar valor)
 - O foco nunca se perde: vai para o campo com erro, para "Silenciar microfone" ao entrar e para
   "Entrar na sala" ao sair
 - Anel de foco bem visível e contraste de texto acima de 4,5:1

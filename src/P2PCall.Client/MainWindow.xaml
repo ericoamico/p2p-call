@@ -196,9 +196,15 @@
                            AutomationProperties.HeadingLevel="Level2" />
                 <ListBox x:Name="ParticipantsList" MinHeight="40" MaxHeight="220"
                          Background="#1E2128" Foreground="#E6E8EC" BorderBrush="#5A6170"
+                         PreviewMouseRightButtonDown="ParticipantsList_PreviewMouseRightButtonDown"
+                         ContextMenuOpening="ParticipantsList_ContextMenuOpening"
                          AutomationProperties.Name="Participantes na sala"
                          AutomationProperties.LabeledBy="{Binding ElementName=ParticipantsHeading}"
-                         AutomationProperties.HelpText="Você e as pessoas conectadas, pelo nome de exibição." />
+                         AutomationProperties.HelpText="Você e as pessoas conectadas. Tecla Aplicativos: mais opções.">
+                    <ListBox.ContextMenu>
+                        <ContextMenu />
+                    </ListBox.ContextMenu>
+                </ListBox>
             </StackPanel>
         </ScrollViewer>
 

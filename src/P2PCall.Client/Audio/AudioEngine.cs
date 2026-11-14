@@ -282,8 +282,23 @@ public sealed class AudioEngine : IDisposable
         private readonly IOpusDecoder _decoder = OpusCodecFactory.CreateDecoder(SampleRate, 2);
         private readonly BufferedWaveProvider _buffer;
         private readonly short[] _pcm = new short[5760 * 2]; // até 120 ms estéreo
+        private readonly GainSampleProvider _gain;
 
         internal ISampleProvider SampleProvider { get; }
+
+        /// <summary>Ganho de escuta deste participante (1 = normal, 0 a 2). Só afeta quem ouve.</summary>
+        public float Volume
+        {
+            get => _gain.Volume;
+            set => _gain.Volume = Math.Clamp(value, 0f, 2f);
+        }
+
+        /// <summary>Silencia apenas este participante na escuta (a gravação segue o mesmo mix).</summary>
+        public bool IsMuted
+        {
+            get => _gain.IsMuted;
+            set => _gain.IsMuted = value;
+        }
 
         internal RemoteAudioSink(AudioEngine engine)
         {
@@ -293,7 +308,8 @@ public sealed class AudioEngine : IDisposable
                 DiscardOnBufferOverflow = true,
                 ReadFully = true,
             };
-            SampleProvider = _buffer.ToSampleProvider();
+            _gain = new GainSampleProvider(_buffer.ToSampleProvider());
+            SampleProvider = _gain;
         }
 
         public void PushOpus(byte[] packet)
@@ -316,6 +332,50 @@ public sealed class AudioEngine : IDisposable
         }
 
         public void Dispose() => _engine.RemoveSink(this);
+    }
+
+    /// <summary>
+    /// Aplica o volume/mute individuais de um participante antes da mesa. Fica depois do buffer
+    /// (nada muda na decodificação) e antes da mistura, então a gravação reflete o que se ouve.
+    /// </summary>
+    private sealed class GainSampleProvider(ISampleProvider source) : ISampleProvider
+    {
+        private volatile float _volume = 1f;
+        private volatile bool _muted;
+
+        public float Volume
+        {
+            get => _volume;
+            set => _volume = Math.Clamp(value, 0f, 2f);
+        }
+
+        public bool IsMuted
+        {
+            get => _muted;
+            set => _muted = value;
+        }
+
+        public WaveFormat WaveFormat => source.WaveFormat;
+
+        public int Read(Span<float> buffer)
+        {
+            int read = source.Read(buffer);
+            if (read == 0) return 0;
+
+            if (_muted)
+            {
+                buffer[..read].Clear();
+                return read;
+            }
+
+            float volume = _volume;
+            if (Math.Abs(volume - 1f) < 0.001f) return read;
+
+            var samples = buffer[..read];
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] = Math.Clamp(samples[i] * volume, -1f, 1f);
+            return read;
+        }
     }
 
     /// <summary>

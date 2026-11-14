@@ -115,6 +115,20 @@ public sealed class CallManager : IAsyncDisposable
         _audio.StopSystemAudio();
     }
 
+    /// <summary>
+    /// Volume (1 = normal) e mute da escuta de um participante: vale só neste cliente, não
+    /// altera o envio dele nem o que os outros ouvem, e entra no mix gravado.
+    /// </summary>
+    public (float Volume, bool Muted)? GetParticipantAudio(string peerId) =>
+        _peers.TryGetValue(peerId, out var peer) ? (peer.AudioVolume, peer.AudioMuted) : null;
+
+    public void SetParticipantAudio(string peerId, float? volume = null, bool? muted = null)
+    {
+        if (!_peers.TryGetValue(peerId, out var peer)) return;
+        if (volume is { } v) peer.SetAudioVolume(v);
+        if (muted is { } m) peer.SetAudioMuted(m);
+    }
+
     // ---------- Sinalização ----------
 
     private async Task OnUserJoined(string userId)
@@ -265,12 +279,22 @@ public sealed class CallManager : IAsyncDisposable
 
     private PeerSession CreatePeer(string peerId, int audioLines, bool withVideo)
     {
-        if (_peers.TryRemove(peerId, out var existing)) existing.Dispose();
+        // Numa reconexão/oferta nova, mantém o volume e o mute que já valiam para esse participante.
+        float volume = 1f;
+        bool muted = false;
+        if (_peers.TryRemove(peerId, out var existing))
+        {
+            volume = existing.AudioVolume;
+            muted = existing.AudioMuted;
+            existing.Dispose();
+        }
         _earlyCandidates.Remove(peerId, out var early);
 
         var pc = new RTCPeerConnection(RtcConfig);
 
         var peer = new PeerSession(peerId, pc, _audio);
+        peer.SetAudioVolume(volume);
+        peer.SetAudioMuted(muted);
         peer.EnsureAudioStreams(Math.Max(1, audioLines));
 
         // Entre clientes desktop a trilha de vídeo existe desde o início (só envia quando a tela
