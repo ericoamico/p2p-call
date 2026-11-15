@@ -6,9 +6,11 @@ using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Threading;
 using P2PCall.Client.Audio;
 using P2PCall.Client.Call;
+using P2PCall.Client.Input;
 using P2PCall.Client.Update;
 using P2PCall.Client.Video;
 
@@ -33,9 +35,23 @@ public partial class MainWindow : Window
     private ReleaseInfo? _availableUpdate;
     private CancellationTokenSource? _updateCts;
 
+    // "Aperte para falar": o hook global roda em outra thread, por isso os campos que ele lê são voláteis.
+    private readonly Preferences _prefs = Preferences.Load();
+    private GlobalKeyboardHook? _keyboardHook;
+    private volatile bool _pushToTalk;
+    private volatile int _pttKey;
+    private volatile bool _pttHeld;
+    private volatile bool _capturingPttKey;
+    private static readonly Brush IdleBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xB4, 0xBA, 0xC4)));
+    private static readonly Brush TalkingBrush = Freeze(new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80)));
+
     public MainWindow()
     {
         InitializeComponent();
+        _pttKey = _prefs.PushToTalkKey;
+        UpdatePttKeyButton();
+        InputModeSelect.SelectedIndex = _prefs.PushToTalk ? 1 : 0;
+        Closed += (_, _) => _keyboardHook?.Dispose();
         ScreensList.ItemsSource = _screens;
         ParticipantsList.ItemsSource = _participantItems;
         _screens.CollectionChanged += (_, _) =>
@@ -270,7 +286,7 @@ public partial class MainWindow : Window
 
         try
         {
-            _audio = new AudioEngine(SelectedBitrate) { IsMuted = _isMuted };
+            _audio = new AudioEngine(SelectedBitrate) { IsMuted = MicClosed };
             _audio.StartCapture(mic.DeviceNumber);
             _audio.StartPlayback();
 
@@ -338,8 +354,161 @@ public partial class MainWindow : Window
     {
         _isMuted = muted;
         SetToggle(BtnMute, muted);
-        if (_audio is not null) _audio.IsMuted = muted;
-        SetStatus(muted ? "Microfone silenciado." : "Microfone ativado.");
+        ApplyMicState();
+        UpdatePttIndicator();
+        SetStatus(muted ? "Microfone silenciado."
+            : _pushToTalk ? $"Microfone ativado. Segure {KeyNames.For(_pttKey)} para falar."
+            : "Microfone ativado.");
+    }
+
+    // ---------- Modo de entrada (detecção de voz / aperte para falar) ----------
+
+    /// <summary>Silenciado tem prioridade; no aperte para falar o microfone só abre com a tecla segurada.</summary>
+    private bool MicClosed => _isMuted || (_pushToTalk && !_pttHeld);
+
+    // Chamado também pela thread do hook: só lê campos e grava um bool volátil no AudioEngine.
+    private void ApplyMicState()
+    {
+        var audio = _audio;
+        if (audio is not null) audio.IsMuted = MicClosed;
+    }
+
+    private void InputModeSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        bool ptt = InputModeSelect.SelectedIndex == 1;
+        if (ptt == _pushToTalk && (_keyboardHook is not null || !ptt)) return;
+        // Na abertura do app (antes de carregar a janela) não anuncia nada.
+        SetInputMode(ptt, announce: IsLoaded);
+    }
+
+    private void SetInputMode(bool pushToTalk, bool announce)
+    {
+        if (pushToTalk && !EnsureKeyboardHook())
+        {
+            SetStatus("Não foi possível monitorar o teclado; o aperte para falar não está disponível.");
+            InputModeSelect.SelectedIndex = 0;
+            return;
+        }
+
+        _pushToTalk = pushToTalk;
+        _pttHeld = false;
+        _capturingPttKey = false;
+        if (!pushToTalk)
+        {
+            _keyboardHook?.Dispose();
+            _keyboardHook = null;
+        }
+        UpdatePttKeyButton();
+        BtnPttKey.Visibility = pushToTalk ? Visibility.Visible : Visibility.Collapsed;
+        ApplyMicState();
+        UpdatePttIndicator();
+
+        _prefs.PushToTalk = pushToTalk;
+        _prefs.Save();
+        if (announce)
+        {
+            SetStatus(pushToTalk
+                ? $"Modo aperte para falar: segure {KeyNames.For(_pttKey)} para falar, em qualquer janela."
+                : "Modo detecção de voz: o microfone transmite enquanto você fala.");
+        }
+    }
+
+    private bool EnsureKeyboardHook()
+    {
+        if (_keyboardHook is not null) return true;
+        try
+        {
+            _keyboardHook = new GlobalKeyboardHook { KeyDown = OnGlobalKeyDown, KeyUp = OnGlobalKeyUp };
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    // Thread do hook: precisa responder rápido (o Windows espera a cada tecla), a UI vai por BeginInvoke.
+    private bool OnGlobalKeyDown(int vk, bool repeat)
+    {
+        if (_capturingPttKey)
+        {
+            if (repeat) return true;
+            _capturingPttKey = false;
+            Dispatcher.BeginInvoke(() => FinishPttKeyCapture(vk));
+            return true; // engole a tecla escolhida para ela não acionar nada na janela
+        }
+
+        if (_pushToTalk && vk == _pttKey && !_pttHeld)
+        {
+            _pttHeld = true;
+            ApplyMicState();
+            Dispatcher.BeginInvoke(UpdatePttIndicator);
+        }
+        return false; // a tecla continua chegando normalmente ao programa em foco
+    }
+
+    private void OnGlobalKeyUp(int vk)
+    {
+        if (vk != _pttKey || !_pttHeld) return;
+        _pttHeld = false;
+        ApplyMicState();
+        Dispatcher.BeginInvoke(UpdatePttIndicator);
+    }
+
+    private void BtnPttKey_Click(object sender, RoutedEventArgs e)
+    {
+        if (_capturingPttKey || !EnsureKeyboardHook()) return;
+        _pttHeld = false;
+        ApplyMicState();
+        BtnPttKey.Content = "Pressione a nova tecla (Esc cancela)";
+        SetStatus("Pressione a tecla que você quer segurar para falar. Esc cancela.");
+        _capturingPttKey = true;
+    }
+
+    private void FinishPttKeyCapture(int vk)
+    {
+        if (vk == KeyNames.Escape)
+        {
+            UpdatePttKeyButton();
+            SetStatus($"Escolha cancelada. A tecla para falar continua sendo {KeyNames.For(_pttKey)}.");
+            return;
+        }
+
+        _pttKey = vk;
+        _prefs.PushToTalkKey = vk;
+        _prefs.Save();
+        UpdatePttKeyButton();
+        UpdatePttIndicator();
+        SetStatus($"Tecla para falar: {KeyNames.For(vk)}.");
+    }
+
+    private void UpdatePttKeyButton()
+    {
+        // O sublinhado é a tecla de acesso; no nome de uma tecla ele seria lido como acesso, então é dobrado.
+        BtnPttKey.Content = $"Tecla para _falar: {KeyNames.For(_pttKey).Replace("_", "__")}";
+    }
+
+    private void UpdatePttIndicator()
+    {
+        bool show = _pushToTalk && _call is not null;
+        PttIndicator.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (!show) return;
+
+        if (_isMuted)
+        {
+            PttIndicator.Text = "Microfone silenciado.";
+            PttIndicator.Foreground = IdleBrush;
+        }
+        else if (_pttHeld)
+        {
+            PttIndicator.Text = "● Transmitindo";
+            PttIndicator.Foreground = TalkingBrush;
+        }
+        else
+        {
+            PttIndicator.Text = $"Microfone fechado. Segure {KeyNames.For(_pttKey)} para falar.";
+            PttIndicator.Foreground = IdleBrush;
+        }
     }
 
     private void Window_PreviewKeyDown(object sender, KeyEventArgs e)
@@ -480,6 +649,7 @@ public partial class MainWindow : Window
             SetToggle(BtnShare, false);
             SetToggle(BtnRecord, false);
         }
+        UpdatePttIndicator();
     }
 
     /// <summary>Atualiza o estado visual/anunciado sem disparar a ação do botão.</summary>
@@ -556,6 +726,12 @@ public partial class MainWindow : Window
     private static extern uint SetThreadExecutionState(uint flags);
 
     // ToString é o que o leitor de tela lê para cada item da lista.
+    private static Brush Freeze(Brush brush)
+    {
+        brush.Freeze();
+        return brush;
+    }
+
     private sealed record MicItem(int DeviceNumber, string Name)
     {
         public override string ToString() => Name;

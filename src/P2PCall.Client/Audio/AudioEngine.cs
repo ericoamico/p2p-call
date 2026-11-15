@@ -39,7 +39,9 @@ public sealed class AudioEngine : IDisposable
     /// <summary>Disparado a cada 20 ms com um pacote Opus pronto para envio.</summary>
     public event Action<byte[]>? EncodedFrameReady;
 
-    public bool IsMuted { get; set; }
+    // volatile: alterado pela UI e pelo hook do "aperte para falar", lido na thread de captura.
+    private volatile bool _isMuted;
+    public bool IsMuted { get => _isMuted; set => _isMuted = value; }
     public bool IsRecording => _tap.IsRecording;
     public bool IsSharingSystemAudio => _systemAudio is not null;
 

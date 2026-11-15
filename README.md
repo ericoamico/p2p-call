@@ -11,6 +11,13 @@ participantes web e desktop na mesma sala.
 - Captura e reprodução com [NAudio](https://github.com/naudio/NAudio), sem eco/ruído/AGC (áudio cru, como no web)
 - Seleção de microfone (troca durante a chamada) e qualidade de envio (32–510 kbps)
 - Silenciar microfone
+- **Modo de entrada**: "Detecção de voz" (microfone aberto, transmite enquanto você fala) ou
+  "Aperte para falar" — o microfone só transmite enquanto você segura a tecla escolhida (padrão
+  **Ctrl esquerdo**), em qualquer janela, mesmo com o app em segundo plano. A tecla é trocada em
+  "Tecla para falar" (pressione a nova tecla; Esc cancela). O AltGr não aciona o Ctrl esquerdo.
+  Modo e tecla ficam salvos em `%APPDATA%\P2PCall\preferencias.json`. Silenciar tem prioridade
+  sobre a tecla. Limitação do Windows: com uma janela de administrador em foco, a tecla só é vista
+  se o P2P Call também for aberto como administrador
 - **Nome de exibição** (opcional, até 40 caracteres) escolhido antes de entrar, e lista **Na sala** com
   você e os participantes conectados; entradas e saídas são anunciadas pelo nome. As telas compartilhadas
   também mostram o nome. Participantes web (e versões antigas) aparecem como "Participante xxxx"
@@ -42,6 +49,7 @@ Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
 
 - Todo campo tem rótulo associado, nome acessível e dica (`HelpText`); "Sala" é marcado como obrigatório
 - Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+N** seu nome, **Alt+C** microfone, **Alt+Q** qualidade,
+  **Alt+D** modo de entrada, **Alt+F** tecla para falar,
   **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+L** copiar link, **Alt+R** sair,
   **Alt+B** baixar atualização (quando houver)
 - **Ctrl+M** silencia/ativa o microfone de qualquer lugar da janela

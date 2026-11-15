@@ -142,6 +142,17 @@
                     <ComboBoxItem Content="510 kbps (máxima)" Tag="510000" />
                 </ComboBox>
 
+                <a11y:AccessibleLabel x:Name="InputModeLabel" Content="Mo_do de entrada" Target="{Binding ElementName=InputModeSelect}" />
+                <ComboBox x:Name="InputModeSelect" SelectionChanged="InputModeSelect_SelectionChanged"
+                          AutomationProperties.Name="Modo de entrada"
+                          AutomationProperties.LabeledBy="{Binding ElementName=InputModeLabel}"
+                          AutomationProperties.HelpText="Detecção de voz: o microfone transmite enquanto você fala. Aperte para falar: o microfone só transmite enquanto você segura a tecla escolhida, em qualquer janela. Pode ser trocado durante a chamada. Atalho: Alt+D.">
+                    <ComboBoxItem Content="Detecção de voz" />
+                    <ComboBoxItem Content="Aperte para falar" />
+                </ComboBox>
+                <a11y:AccessibleButton x:Name="BtnPttKey" Content="Tecla para _falar: Ctrl esquerdo" Visibility="Collapsed" Click="BtnPttKey_Click"
+                        AutomationProperties.HelpText="Escolhe a tecla que você segura para falar. Depois de acionar, pressione a nova tecla; Esc cancela. Atalho: Alt+F." />
+
                 <a11y:AccessibleButton x:Name="BtnStart" Content="_Entrar na sala" Margin="0,18,0,0"
                         Background="#1F5FD6" BorderBrush="#6E9BF5" Click="BtnStart_Click"
                         AutomationProperties.HelpText="Atalho: Alt+E." />
@@ -149,6 +160,9 @@
                               AutomationProperties.Name="Silenciar microfone"
                               AutomationProperties.AcceleratorKey="Ctrl+M"
                               AutomationProperties.HelpText="Quando pressionado, seu microfone está silenciado. Atalhos: Ctrl+M ou Alt+M." />
+                <!-- Sem região ao vivo: anunciar cada aperto da tecla inundaria o leitor de tela. -->
+                <TextBlock x:Name="PttIndicator" Visibility="Collapsed" Margin="0,6,0,0" FontSize="13" TextWrapping="Wrap"
+                           Foreground="#B4BAC4" AutomationProperties.Name="Estado do aperte para falar" />
                 <a11y:AccessibleToggleButton x:Name="BtnShare" Content="Compartilhar _Tela" IsEnabled="False" Checked="BtnShare_Toggled" Unchecked="BtnShare_Toggled"
                               AutomationProperties.Name="Compartilhar tela"
                               AutomationProperties.HelpText="Quando pressionado, sua tela principal e o áudio do PC estão sendo enviados. Atalho: Alt+T." />
