@@ -9,7 +9,8 @@ participantes web e desktop na mesma sala.
 
 - Áudio P2P via WebRTC ([SIPSorcery](https://github.com/sipsorcery-org/sipsorcery)), Opus estéreo/FEC ([Concentus](https://github.com/lostromb/concentus))
 - Captura e reprodução com [NAudio](https://github.com/naudio/NAudio), sem eco/ruído/AGC (áudio cru, como no web)
-- Seleção de microfone (troca durante a chamada) e qualidade de envio (32–510 kbps)
+- Seleção de microfone e de **dispositivo de saída** (onde você ouve os participantes); ambos podem ser
+  trocados durante a chamada. Qualidade de envio (32–510 kbps)
 - Silenciar microfone
 - **Modo de entrada**: "Detecção de voz" (microfone aberto, transmite enquanto você fala) ou
   "Aperte para falar" — o microfone só transmite enquanto você segura a tecla escolhida (padrão
@@ -18,6 +19,10 @@ participantes web e desktop na mesma sala.
   Modo e tecla ficam salvos em `%APPDATA%\P2PCall\preferencias.json`. Silenciar tem prioridade
   sobre a tecla. Limitação do Windows: com uma janela de administrador em foco, a tecla só é vista
   se o P2P Call também for aberto como administrador
+- **Áudio por participante (só na escuta)**: na lista "Na sala", clique com o botão direito (ou use a
+  tecla Aplicativos) em um nome para **silenciá-lo** ou ajustar o **volume dele de 0 a 200%** no
+  controle deslizante (setas). Não muda o microfone da pessoa nem o que os outros ouvem, e a gravação
+  sai com esses ajustes aplicados, como você ouviu
 - **Nome de exibição** (opcional, até 40 caracteres) escolhido antes de entrar, e lista **Na sala** com
   você e os participantes conectados; entradas e saídas são anunciadas pelo nome. As telas compartilhadas
   também mostram o nome. Participantes web (e versões antigas) aparecem como "Participante xxxx"
@@ -48,8 +53,8 @@ participantes web e desktop na mesma sala.
 Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
 
 - Todo campo tem rótulo associado, nome acessível e dica (`HelpText`); "Sala" é marcado como obrigatório
-- Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+N** seu nome, **Alt+C** microfone, **Alt+Q** qualidade,
-  **Alt+D** modo de entrada, **Alt+F** tecla para falar,
+- Teclas de acesso: **Alt+V** servidor, **Alt+S** sala, **Alt+N** seu nome, **Alt+C** microfone,
+  **Alt+D** modo de entrada, **Alt+I** dispositivo de saída, **Alt+Q** qualidade, **Alt+F** tecla para falar,
   **Alt+E** entrar, **Alt+M** microfone, **Alt+T** tela, **Alt+G** gravar, **Alt+L** copiar link, **Alt+R** sair,
   **Alt+B** baixar atualização (quando houver)
 - **Ctrl+M** silencia/ativa o microfone de qualquer lugar da janela
@@ -57,6 +62,9 @@ Pensado para uso com leitor de telas (Narrador, NVDA, JAWS) e só com teclado:
   "pressionado"/"não pressionado" (como o `aria-pressed` do web) e funcionam pelo padrão Toggle da automação
 - Status e número de participantes são regiões "ao vivo": mudanças são anunciadas sem mover o foco
   (inclui mute, início/fim de compartilhamento de tela de outros participantes, gravação salva)
+- O menu de áudio de cada participante abre pelo botão direito ou pela tecla Aplicativos (Menu/Shift+F10)
+  com a linha selecionada e o foco mantido; a opção de silenciar fecha o menu, e o volume é um controle
+  deslizante no submenu, ajustado com as setas (sem botões extras nem digitar valor)
 - O foco nunca se perde: vai para o campo com erro, para "Silenciar microfone" ao entrar e para
   "Entrar na sala" ao sair
 - Anel de foco bem visível e contraste de texto acima de 4,5:1

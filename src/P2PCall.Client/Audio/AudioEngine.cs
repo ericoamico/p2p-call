@@ -45,6 +45,9 @@ public sealed class AudioEngine : IDisposable
     public bool IsRecording => _tap.IsRecording;
     public bool IsSharingSystemAudio => _systemAudio is not null;
 
+    /// <summary>Dispositivo onde as vozes remotas tocam (-1 = dispositivo padrão do Windows).</summary>
+    public int PlaybackDeviceNumber { get; private set; } = -1;
+
     public AudioEngine(int bitrateBps)
     {
         // Estéreo por causa do áudio do PC; o microfone (mono) vai igual nos dois canais.
@@ -63,6 +66,18 @@ public sealed class AudioEngine : IDisposable
         {
             var caps = WaveIn.GetCapabilities(i);
             list.Add((i, string.IsNullOrWhiteSpace(caps.ProductName) ? $"Microfone {i + 1}" : caps.ProductName));
+        }
+        return list;
+    }
+
+    /// <summary>Saídas de áudio (alto-falantes/fones) disponíveis no Windows.</summary>
+    public static IReadOnlyList<(int DeviceNumber, string Name)> GetSpeakers()
+    {
+        var list = new List<(int, string)>();
+        for (int i = 0; i < WaveOut.DeviceCount; i++)
+        {
+            var caps = WaveOut.GetCapabilities(i);
+            list.Add((i, string.IsNullOrWhiteSpace(caps.ProductName) ? $"Saída {i + 1}" : caps.ProductName));
         }
         return list;
     }
@@ -138,12 +153,53 @@ public sealed class AudioEngine : IDisposable
         Interlocked.Exchange(ref _systemAudio, null)?.Dispose();
     }
 
-    public void StartPlayback()
+    /// <summary>Inicia a reprodução no dispositivo escolhido (-1 = padrão do Windows).</summary>
+    public void StartPlayback(int deviceNumber = -1)
     {
-        if (_output is not null) return;
-        _output = new WaveOut { BufferMilliseconds = 40, NumberOfBuffers = 3 };
-        _output.Init(_tap);
-        _output.Play();
+        if (_output is not null)
+        {
+            if (PlaybackDeviceNumber == deviceNumber) return;
+            StopPlayback();
+        }
+
+        var output = new WaveOut
+        {
+            DeviceNumber = deviceNumber,
+            BufferMilliseconds = 40,
+            NumberOfBuffers = 3,
+        };
+        try
+        {
+            output.Init(_tap);
+            output.Play();
+        }
+        catch
+        {
+            output.Dispose();
+            throw;
+        }
+        _output = output;
+        PlaybackDeviceNumber = deviceNumber;
+    }
+
+    /// <summary>
+    /// Troca a saída de áudio durante a chamada. Se o novo dispositivo falhar, volta para o anterior.
+    /// </summary>
+    public void ChangePlaybackDevice(int deviceNumber)
+    {
+        if (deviceNumber == PlaybackDeviceNumber) return;
+
+        int previous = PlaybackDeviceNumber;
+        StopPlayback();
+        try
+        {
+            StartPlayback(deviceNumber);
+        }
+        catch
+        {
+            try { StartPlayback(previous); } catch { /* sem saída disponível */ }
+            throw;
+        }
     }
 
     public void StopPlayback()
@@ -226,8 +282,23 @@ public sealed class AudioEngine : IDisposable
         private readonly IOpusDecoder _decoder = OpusCodecFactory.CreateDecoder(SampleRate, 2);
         private readonly BufferedWaveProvider _buffer;
         private readonly short[] _pcm = new short[5760 * 2]; // até 120 ms estéreo
+        private readonly GainSampleProvider _gain;
 
         internal ISampleProvider SampleProvider { get; }
+
+        /// <summary>Ganho de escuta deste participante (1 = normal, 0 a 2). Só afeta quem ouve.</summary>
+        public float Volume
+        {
+            get => _gain.Volume;
+            set => _gain.Volume = Math.Clamp(value, 0f, 2f);
+        }
+
+        /// <summary>Silencia apenas este participante na escuta (a gravação segue o mesmo mix).</summary>
+        public bool IsMuted
+        {
+            get => _gain.IsMuted;
+            set => _gain.IsMuted = value;
+        }
 
         internal RemoteAudioSink(AudioEngine engine)
         {
@@ -237,7 +308,8 @@ public sealed class AudioEngine : IDisposable
                 DiscardOnBufferOverflow = true,
                 ReadFully = true,
             };
-            SampleProvider = _buffer.ToSampleProvider();
+            _gain = new GainSampleProvider(_buffer.ToSampleProvider());
+            SampleProvider = _gain;
         }
 
         public void PushOpus(byte[] packet)
@@ -260,6 +332,50 @@ public sealed class AudioEngine : IDisposable
         }
 
         public void Dispose() => _engine.RemoveSink(this);
+    }
+
+    /// <summary>
+    /// Aplica o volume/mute individuais de um participante antes da mesa. Fica depois do buffer
+    /// (nada muda na decodificação) e antes da mistura, então a gravação reflete o que se ouve.
+    /// </summary>
+    private sealed class GainSampleProvider(ISampleProvider source) : ISampleProvider
+    {
+        private volatile float _volume = 1f;
+        private volatile bool _muted;
+
+        public float Volume
+        {
+            get => _volume;
+            set => _volume = Math.Clamp(value, 0f, 2f);
+        }
+
+        public bool IsMuted
+        {
+            get => _muted;
+            set => _muted = value;
+        }
+
+        public WaveFormat WaveFormat => source.WaveFormat;
+
+        public int Read(Span<float> buffer)
+        {
+            int read = source.Read(buffer);
+            if (read == 0) return 0;
+
+            if (_muted)
+            {
+                buffer[..read].Clear();
+                return read;
+            }
+
+            float volume = _volume;
+            if (Math.Abs(volume - 1f) < 0.001f) return read;
+
+            var samples = buffer[..read];
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] = Math.Clamp(samples[i] * volume, -1f, 1f);
+            return read;
+        }
     }
 
     /// <summary>

@@ -16,9 +16,24 @@ internal sealed class PeerSession : IDisposable
     private readonly List<RTCIceCandidateInit> _pendingCandidates = [];
     private readonly object _videoLock = new();
     private VpxVideoEncoder? _videoDecoder;
+    // Escuta individual deste participante (não afeta o que ele envia nem os outros).
+    private float _audioVolume = 1f;
+    private bool _audioMuted;
 
     public string Id { get; }
     public RTCPeerConnection Pc { get; }
+
+    /// <summary>Volume de escuta deste participante (1 = normal).</summary>
+    public float AudioVolume
+    {
+        get { lock (_audioSinks) return _audioVolume; }
+    }
+
+    /// <summary>Este participante está silenciado só para nós.</summary>
+    public bool AudioMuted
+    {
+        get { lock (_audioSinks) return _audioMuted; }
+    }
 
     /// <summary>Nosso papel DTLS ("active"/"passive") definido na primeira negociação.</summary>
     public string? DtlsSetup { get; set; }
@@ -58,8 +73,30 @@ internal sealed class PeerSession : IDisposable
         lock (_audioSinks)
         {
             if (!_audioSinks.TryGetValue(streamIndex, out var sink))
+            {
                 _audioSinks[streamIndex] = sink = _engine.CreateRemoteSink();
+                sink.Volume = _audioVolume;
+                sink.IsMuted = _audioMuted;
+            }
             return sink;
+        }
+    }
+
+    public void SetAudioVolume(float volume)
+    {
+        lock (_audioSinks)
+        {
+            _audioVolume = Math.Clamp(volume, 0f, 2f);
+            foreach (var sink in _audioSinks.Values) sink.Volume = _audioVolume;
+        }
+    }
+
+    public void SetAudioMuted(bool muted)
+    {
+        lock (_audioSinks)
+        {
+            _audioMuted = muted;
+            foreach (var sink in _audioSinks.Values) sink.IsMuted = muted;
         }
     }
 

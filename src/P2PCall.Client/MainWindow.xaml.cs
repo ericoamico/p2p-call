@@ -2,6 +2,7 @@
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -27,10 +28,12 @@ public partial class MainWindow : Window
     private CallManager? _call;
     private bool _isMuted;
     private bool _syncingToggles;
+    private bool _syncingSpeakers;
+    private bool _contextMenuOnEmpty;
     private Uri? _joinedServer;
     // Nome de exibição escolhido antes de entrar; vai para os outros participantes na negociação.
     private string _displayName = "";
-    private readonly ObservableCollection<string> _participantItems = [];
+    private readonly ObservableCollection<ParticipantRow> _participantItems = [];
     private Dictionary<string, Participant> _participants = [];
     private ReleaseInfo? _availableUpdate;
     private CancellationTokenSource? _updateCts;
@@ -60,6 +63,7 @@ public partial class MainWindow : Window
 
         ApplyCommandLine(Environment.GetCommandLineArgs());
         LoadMicrophones();
+        LoadSpeakers();
         Loaded += async (_, _) => await CheckForUpdateAsync();
     }
 
@@ -85,6 +89,21 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             SetStatus("Erro ao listar dispositivos: " + ex.Message);
+        }
+    }
+
+    private void LoadSpeakers()
+    {
+        try
+        {
+            var speakers = AudioEngine.GetSpeakers().Select(s => new SpeakerItem(s.DeviceNumber, s.Name)).ToList();
+            SpeakerSelect.ItemsSource = speakers;
+            SpeakerSelect.SelectedIndex = speakers.Count > 0 ? 0 : -1;
+            if (speakers.Count == 0) SetStatus("Nenhum dispositivo de saída de áudio encontrado.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Erro ao listar as saídas de áudio: " + ex.Message);
         }
     }
 
@@ -274,6 +293,12 @@ public partial class MainWindow : Window
             MicSelect.Focus();
             return;
         }
+        if (SpeakerSelect.SelectedItem is not SpeakerItem speaker)
+        {
+            SetStatus("Selecione um dispositivo de saída de áudio.");
+            SpeakerSelect.Focus();
+            return;
+        }
         if (!Uri.TryCreate(ServerInput.Text.Trim(), UriKind.Absolute, out var server))
         {
             SetStatus("Endereço do servidor inválido.");
@@ -288,7 +313,7 @@ public partial class MainWindow : Window
         {
             _audio = new AudioEngine(SelectedBitrate) { IsMuted = MicClosed };
             _audio.StartCapture(mic.DeviceNumber);
-            _audio.StartPlayback();
+            _audio.StartPlayback(speaker.DeviceNumber);
 
             _call = new CallManager(_audio);
             _call.StatusChanged += msg => Dispatcher.BeginInvoke(() => SetStatus(msg));
@@ -537,6 +562,33 @@ public partial class MainWindow : Window
     private void QualitySelect_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
         _audio?.SetBitrate(SelectedBitrate);
 
+    // Troca a saída de áudio durante a chamada; se o dispositivo falhar, a seleção volta ao anterior.
+    private void SpeakerSelect_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_audio is null || _syncingSpeakers || SpeakerSelect.SelectedItem is not SpeakerItem speaker) return;
+        try
+        {
+            _audio.ChangePlaybackDevice(speaker.DeviceNumber);
+            SetStatus($"Ouvindo em: {speaker.Name}.");
+        }
+        catch (Exception ex)
+        {
+            SetStatus("Erro ao trocar o dispositivo de saída: " + ex.Message);
+            _syncingSpeakers = true;
+            try
+            {
+                SpeakerSelect.SelectedItem = SpeakerSelect.Items
+                    .Cast<SpeakerItem>()
+                    .FirstOrDefault(s => s.DeviceNumber == _audio.PlaybackDeviceNumber) ?? SpeakerSelect.SelectedItem;
+            }
+            finally
+            {
+                _syncingSpeakers = false;
+            }
+            SpeakerSelect.Focus();
+        }
+    }
+
     private async void BtnShare_Toggled(object sender, RoutedEventArgs e)
     {
         if (_syncingToggles || _call is null) return;
@@ -681,9 +733,9 @@ public partial class MainWindow : Window
             SetStatus($"{old.DisplayLabel} saiu da chamada.");
 
         _participantItems.Clear();
-        _participantItems.Add(_displayName.Length > 0 ? $"{_displayName} (você)" : "Você");
+        _participantItems.Add(new ParticipantRow(null, _displayName.Length > 0 ? $"{_displayName} (você)" : "Você"));
         foreach (var p in list.Where(p => p.Connected).OrderBy(p => p.DisplayLabel, StringComparer.CurrentCultureIgnoreCase))
-            _participantItems.Add(p.DisplayLabel);
+            _participantItems.Add(new ParticipantRow(p.Id, p.DisplayLabel));
 
         foreach (var screen in _screens) screen.Owner = LabelFor(screen.PeerId);
         SetParticipantCount(list.Count(p => p.Connected));
@@ -698,6 +750,128 @@ public partial class MainWindow : Window
         if (ParticipantsText.Text == text) return;
         ParticipantsText.Text = text;
         Announce(ParticipantsText);
+    }
+
+    // ---------- Áudio por participante ----------
+
+    // Botão direito seleciona a linha sob o mouse antes de abrir o menu; a tecla Menu (ou
+    // Shift+F10) usa a linha que já está selecionada/focada.
+    private void ParticipantsList_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        var item = ItemsControl.ContainerFromElement(ParticipantsList, (DependencyObject)e.OriginalSource) as ListBoxItem;
+        _contextMenuOnEmpty = item is null;
+        if (item is not null)
+        {
+            item.IsSelected = true;
+            item.Focus();
+        }
+    }
+
+    private void ParticipantsList_ContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (ParticipantsList.ContextMenu is not { } menu) return;
+        menu.Items.Clear();
+
+        // Clique fora de uma linha, "Você" e participantes que acabaram de sair não têm menu.
+        bool onEmpty = _contextMenuOnEmpty;
+        _contextMenuOnEmpty = false;
+        if (onEmpty
+            || _call is null
+            || ParticipantsList.SelectedItem is not ParticipantRow { PeerId: { } peerId } row
+            || _call.GetParticipantAudio(peerId) is not { } audio)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        var mute = new MenuItem { Header = "_Silenciar" };
+        UpdateMuteItem(mute, row.Label, audio.Muted);
+        mute.Click += (_, _) =>
+        {
+            if (_call?.GetParticipantAudio(peerId) is not { } current) return;
+            bool muted = !current.Muted;
+            _call.SetParticipantAudio(peerId, muted: muted);
+            SetStatus(muted
+                ? $"{row.Label} silenciado."
+                : $"{row.Label} com som ativado.");
+        };
+
+        menu.Items.Add(mute);
+        menu.Items.Add(BuildVolumeMenu(peerId, row.Label, audio.Volume));
+    }
+
+    private static void UpdateMuteItem(MenuItem item, string label, bool muted)
+    {
+        // Sem "para mim": o menu já é da sua escuta, e o item muda para a ação contrária.
+        item.Header = muted ? "_Ativar som" : "_Silenciar";
+        AutomationProperties.SetName(item, muted
+            ? $"Ativar o som de {label}"
+            : $"Silenciar {label}");
+        AutomationProperties.SetHelpText(item,
+            "Afeta só a sua escuta e a gravação.");
+    }
+
+    // Submenu "Volume": um controle deslizante. Ao abrir, o foco vai para ele e as setas
+    // ajustam o volume; não há botões de aumentar/diminuir nem digitação de valor.
+    private MenuItem BuildVolumeMenu(string peerId, string label, float volume)
+    {
+        var percent = new TextBlock { Text = $"Volume: {volume * 100:0}%" };
+
+        var slider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 200,
+            Value = Math.Round(volume * 100),
+            TickFrequency = 5,
+            IsSnapToTickEnabled = true,
+            SmallChange = 5,
+            LargeChange = 25,
+            Width = 220,
+            Margin = new Thickness(8, 4, 8, 8),
+        };
+        AutomationProperties.SetName(slider, $"Volume de {label}");
+        AutomationProperties.SetHelpText(slider,
+            "De 0 a 200%. 100% é o volume normal; 0 é mudo. Use as setas para ajustar.");
+        slider.ValueChanged += (_, _) =>
+        {
+            percent.Text = $"Volume: {slider.Value:0}%";
+            _call?.SetParticipantAudio(peerId, volume: (float)(slider.Value / 100.0));
+        };
+        // Trata as setas aqui para o menu não usá-las para navegar enquanto o slider está focado.
+        slider.PreviewKeyDown += (_, e) =>
+        {
+            double? next = e.Key switch
+            {
+                Key.Left or Key.Down => slider.Value - slider.SmallChange,
+                Key.Right or Key.Up => slider.Value + slider.SmallChange,
+                Key.PageDown => slider.Value - slider.LargeChange,
+                Key.PageUp => slider.Value + slider.LargeChange,
+                Key.Home => slider.Minimum,
+                Key.End => slider.Maximum,
+                _ => null,
+            };
+            if (next is not { } value) return;
+            slider.Value = Math.Clamp(value, slider.Minimum, slider.Maximum);
+            e.Handled = true;
+        };
+
+        var panel = new StackPanel { Width = 236 };
+        panel.Children.Add(percent);
+        panel.Children.Add(slider);
+
+        var sliderItem = new MenuItem
+        {
+            Header = panel,
+            StaysOpenOnClick = true,
+        };
+        AutomationProperties.SetName(sliderItem, $"Ajustar o volume de {label}");
+        sliderItem.Click += (_, _) => slider.Focus();
+
+        var volumeMenu = new MenuItem { Header = "V_olume", StaysOpenOnClick = true };
+        // Enter/clique no item abre o submenu e já deixa o slider pronto para as setas.
+        volumeMenu.SubmenuOpened += (_, _) => slider.Dispatcher.BeginInvoke(() => slider.Focus());
+        volumeMenu.Items.Add(sliderItem);
+        return volumeMenu;
     }
 
     /// <summary>Avisa o leitor de tela (Narrador, NVDA, JAWS) que uma região "ao vivo" mudou.</summary>
@@ -735,5 +909,16 @@ public partial class MainWindow : Window
     private sealed record MicItem(int DeviceNumber, string Name)
     {
         public override string ToString() => Name;
+    }
+
+    private sealed record SpeakerItem(int DeviceNumber, string Name)
+    {
+        public override string ToString() => Name;
+    }
+
+    // Linha da lista "Na sala": o Id identifica o peer para o menu de áudio (null = você mesmo).
+    private sealed record ParticipantRow(string? PeerId, string Label)
+    {
+        public override string ToString() => Label;
     }
 }

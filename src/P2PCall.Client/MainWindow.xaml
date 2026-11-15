@@ -130,6 +130,12 @@
                           AutomationProperties.LabeledBy="{Binding ElementName=MicLabel}"
                           AutomationProperties.HelpText="Pode ser trocado durante a chamada. Atalho: Alt+C." />
 
+                <a11y:AccessibleLabel x:Name="SpeakerLabel" Content="Dispositivo de sa_ída" Target="{Binding ElementName=SpeakerSelect}" />
+                <ComboBox x:Name="SpeakerSelect" DisplayMemberPath="Name" SelectionChanged="SpeakerSelect_SelectionChanged"
+                          AutomationProperties.Name="Dispositivo de saída de áudio"
+                          AutomationProperties.LabeledBy="{Binding ElementName=SpeakerLabel}"
+                          AutomationProperties.HelpText="Onde você ouve os outros participantes. Pode ser trocado durante a chamada. Atalho: Alt+I." />
+
                 <a11y:AccessibleLabel x:Name="QualityLabel" Content="_Qualidade de envio (Opus)" Target="{Binding ElementName=QualitySelect}" />
                 <ComboBox x:Name="QualitySelect" SelectionChanged="QualitySelect_SelectionChanged"
                           AutomationProperties.Name="Qualidade de envio"
@@ -190,9 +196,15 @@
                            AutomationProperties.HeadingLevel="Level2" />
                 <ListBox x:Name="ParticipantsList" MinHeight="40" MaxHeight="220"
                          Background="#1E2128" Foreground="#E6E8EC" BorderBrush="#5A6170"
+                         PreviewMouseRightButtonDown="ParticipantsList_PreviewMouseRightButtonDown"
+                         ContextMenuOpening="ParticipantsList_ContextMenuOpening"
                          AutomationProperties.Name="Participantes na sala"
                          AutomationProperties.LabeledBy="{Binding ElementName=ParticipantsHeading}"
-                         AutomationProperties.HelpText="Você e as pessoas conectadas, pelo nome de exibição." />
+                         AutomationProperties.HelpText="Você e as pessoas conectadas. Tecla Aplicativos: mais opções.">
+                    <ListBox.ContextMenu>
+                        <ContextMenu />
+                    </ListBox.ContextMenu>
+                </ListBox>
             </StackPanel>
         </ScrollViewer>
 
